@@ -1,0 +1,11 @@
+[submodule "src/Pangolin"]
+	path = src/Pangolin
+	url = https://github.com/stevenlovegrove/Pangolin
+[submodule "src/rviz"]
+	path = src/rviz
+	url = https://github.com/ros2/rviz.git
+	branch = humble
+[submodule "src/image_common"]
+	path = src/image_common
+	url = https://github.com/ros-perception/image_common.git
+	branch = humble

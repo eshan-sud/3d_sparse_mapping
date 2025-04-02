@@ -1,0 +1,53 @@
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <image_transport/image_transport.hpp>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+
+class CameraNode : public rclcpp::Node {
+public:
+    CameraNode() : Node("camera_node") {
+        cap_.open(0); // Open default camera
+        if (!cap_.isOpened()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to open camera");
+            return;
+        }
+        setup_publisher();
+        timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(30),
+            std::bind(&CameraNode::capture_and_publish, this));
+    }
+
+private:
+    void setup_publisher() {
+        image_transport::ImageTransport it(shared_from_this());
+        publisher_ = it.advertise("/camera/image_raw", 10);
+    }
+    void capture_and_publish() {
+        if (!cap_.isOpened()) {
+            return;
+        }
+        cv::Mat frame;
+        cap_ >> frame;
+        if (frame.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Captured empty frame");
+            return;
+        }
+        std_msgs::msg::Header header;
+        header.stamp = this->now();
+        header.frame_id = "camera_frame";
+        sensor_msgs::msg::Image::SharedPtr msg = cv_bridge::CvImage(header, "bgr8", frame).toImageMsg();
+        publisher_.publish(*msg);
+    }
+    image_transport::Publisher publisher_;
+    rclcpp::TimerBase::SharedPtr timer_;
+    cv::VideoCapture cap_;
+};
+
+int main(int argc, char **argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<CameraNode>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
