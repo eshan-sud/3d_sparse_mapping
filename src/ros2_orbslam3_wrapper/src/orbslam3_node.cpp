@@ -2,13 +2,12 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.hpp>
-#include <System.h>
 #include <cstdlib>
 #include <fstream>
 #include <Eigen/Dense>
 
-#include "include/System.h"
-#include "include/Tracking.h"
+#include <System.h>
+#include <Tracking.h>
 #include <nav_msgs/msg/path.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -45,8 +44,11 @@ public:
         }
 
         // Initialise ORB-SLAM3
+        // slam_system_ = std::make_shared<ORB_SLAM3::System>(
+        //     vocab_path, settings_path, ORB_SLAM3::System::MONOCULAR, false
+        // );
         slam_system_ = std::make_shared<ORB_SLAM3::System>(
-            vocab_path, settings_path, ORB_SLAM3::System::MONOCULAR, false
+            vocab_path, settings_path, ORB_SLAM3::System::MONOCULAR, true // Show Pangolin Viewer
         );
 
         // Subscribe to image topic
@@ -99,29 +101,27 @@ private:
 
         int tracking_state = slam_system_->GetTrackingState();
         if (tracking_state == ORB_SLAM3::Tracking::LOST) {
-            RCLCPP_WARN(this->get_logger(), "Tracking lost. Not publishing trajectory.");
+            RCLCPP_WARN(this->get_logger(), "Tracking lost. Clearing trajectory.");
+            trajectory_.poses.clear();
             return;
         }
 
-        // Get current camera pose
-        Sophus::SE3f cam_pose = GetCurrentCameraPose();
+
+        Sophus::SE3f cam_pose = slam_system_->GetTracker()->GetCameraPose();
         Eigen::Matrix4f pose_matrix = cam_pose.matrix();
 
-        // Convert to ROS PoseStamped
         geometry_msgs::msg::PoseStamped pose_msg;
         pose_msg.header.stamp = this->now();
         pose_msg.header.frame_id = "map";
         pose_msg.pose.position.x = pose_matrix(0, 3);
         pose_msg.pose.position.y = pose_matrix(1, 3);
         pose_msg.pose.position.z = pose_matrix(2, 3);
-
         Eigen::Quaternionf q(Eigen::Matrix3f(pose_matrix.block<3,3>(0,0)));
         pose_msg.pose.orientation.x = q.x();
         pose_msg.pose.orientation.y = q.y();
         pose_msg.pose.orientation.z = q.z();
         pose_msg.pose.orientation.w = q.w();
 
-        // Add to trajectory
         trajectory_.header = pose_msg.header;
         trajectory_.poses.push_back(pose_msg);
         trajectory_pub_->publish(trajectory_);
@@ -129,12 +129,12 @@ private:
 
     void publish_map_points() {
         if (!slam_system_) return;
+
         std::vector<ORB_SLAM3::MapPoint*> map_points = slam_system_->GetTrackedMapPoints();
 
         sensor_msgs::msg::PointCloud2 cloud_msg;
         cloud_msg.header.stamp = this->now();
         cloud_msg.header.frame_id = "map";
-
         cloud_msg.height = 1;
         cloud_msg.is_dense = false;
         cloud_msg.is_bigendian = false;
@@ -149,36 +149,15 @@ private:
 
         for (const auto& mp : map_points) {
             if (!mp || mp->isBad()) continue;
-            // cv::Mat pos = mp->GetWorldPos();
-            // *iter_x = pos.at<float>(0);
-            // *iter_y = pos.at<float>(1);
-            // *iter_z = pos.at<float>(2);
             Eigen::Vector3f pos = mp->GetWorldPos();
-            *iter_x = pos.x();
-            *iter_y = pos.y();
-            *iter_z = pos.z();
-
-            ++iter_x;
-            ++iter_y;
-            ++iter_z;
+            *iter_x = pos.x(); ++iter_x;
+            *iter_y = pos.y(); ++iter_y;
+            *iter_z = pos.z(); ++iter_z;
         }
 
         map_points_pub_->publish(cloud_msg);
     }
-
-    Sophus::SE3f GetCurrentCameraPose();
 };
-
-Sophus::SE3f ORBSLAM3Node::GetCurrentCameraPose() {
-    if (!slam_system_) return Sophus::SE3f();
-    int tracking_state = slam_system_->GetTrackingState();
-    if (tracking_state == ORB_SLAM3::Tracking::LOST) {
-        RCLCPP_WARN(this->get_logger(), "Tracking lost. Returning identity pose.");
-        return Sophus::SE3f();
-    }
-    // return slam_system_->GetCurrentCamPose();
-    return slam_system_->GetTracker()->GetCameraPose(); // After making Tracker public in ORB-SLAM3
-}
 
 
 int main(int argc, char **argv) {
