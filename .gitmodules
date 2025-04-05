@@ -9,3 +9,6 @@
 	path = src/image_common
 	url = https://github.com/ros-perception/image_common.git
 	branch = humble
+[submodule "src/ORB_SLAM3"]
+	path = src/ORB_SLAM3
+	url = https://github.com/eshan-sud/ORB_SLAM3

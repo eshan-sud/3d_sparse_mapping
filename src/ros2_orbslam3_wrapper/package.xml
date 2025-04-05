@@ -5,8 +5,9 @@
   <version>1.0.0</version>
   <description>ORB-SLAM3 Integration in ROS2 (Humble Hawksbill)</description>
   <maintainer email="eshansud22@gmail.com">Eshan Sud</maintainer>
-  <license>GPL 3.0</license>
+  <license>MIT</license>
 
+  <!-- Build dependencies -->
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
@@ -16,25 +17,34 @@
   <build_depend>sensor_msgs</build_depend>
   <build_depend>cv_bridge</build_depend>
   <build_depend>image_transport</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>eigen3</build_depend>
   <build_depend>Pangolin</build_depend>
   <build_depend>boost_system</build_depend>
   <build_depend>boost_serialization</build_depend>
-  <build_depend>libcrypto</build_depend>
   <build_depend>python3-natsort</build_depend>
-  <build_depend>OpenCV</build_depend>
+  <build_depend>libcrypto</build_depend>
+  <build_depend>opencv3</build_depend>
 
+  <!-- Execution dependencies -->
   <exec_depend>rclcpp</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
   <exec_depend>image_transport</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>eigen3</exec_depend>
+  <exec_depend>opencv3</exec_depend>
   <exec_depend>Pangolin</exec_depend>
   <exec_depend>boost_system</exec_depend>
   <exec_depend>boost_serialization</exec_depend>
-  <exec_depend>libcrypto</exec_depend>
   <exec_depend>python3-natsort</exec_depend>
-  
+  <exec_depend>libcrypto</exec_depend>
+
+  <!-- Testing dependencies -->  
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
