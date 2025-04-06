@@ -7,6 +7,7 @@
 #include <chrono>
 #include <thread>
 #include <csignal>  // For handling Ctrl+C (SIGINT)
+#include <filesystem> // C++17 required
 
 std::atomic<bool> running(true);  // Global flag to handle shutdown properly
 
@@ -40,6 +41,8 @@ public:
             RCLCPP_ERROR(this->get_logger(), "Failed to open camera device: %d", device_index_);
             return;
         }
+        std::string output_dir_ = "/home/minor-project/minor-project/Datasets/real-time"; // Set output directory
+        std::filesystem::create_directories(output_dir_);
 
         // Create publisher & timer
         publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", 10);
@@ -73,6 +76,9 @@ private:
         msg->data.assign(frame.data, frame.data + (frame.total() * frame.elemSize()));
         publisher_->publish(std::move(msg));
         RCLCPP_INFO(this->get_logger(), "%d Images Published", image_count_++);
+        std::ostringstream filename;
+        filename << output_dir_ << "/frame_" << std::setw(6) << std::setfill('0') << image_count_ << ".png";
+        cv::imwrite(filename.str(), frame);
         // Show image using OpenCV
         cv::imshow("Camera Feed", frame);
         cv::waitKey(1);  // Required to refresh the OpenCV window

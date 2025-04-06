@@ -24,8 +24,7 @@ find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
 
-list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../install/octomap")
-find_package(octomap REQUIRED CONFIG)
+find_package(octomap REQUIRED)
 
 # Check ORB-SLAM3 shared library exists
 if(NOT EXISTS ${PROJECT_SOURCE_DIR}/../ORB_SLAM3/lib/libORB_SLAM3.so)
@@ -73,8 +72,9 @@ ament_target_dependencies(rviz_launcher_node rclcpp sensor_msgs std_msgs)
 
 # OctoMap Mapping Node
 add_executable(octomap_node src/octomap_node.cpp)
-target_link_libraries(octomap_node ${OpenCV_LIBS} ${octomap_LIBRARIES})
-ament_target_dependencies(octomap_node rclcpp nav_msgs octomap)
+target_include_directories(octomap_node PRIVATE ${OCTOMAP_INCLUDE_DIRS})
+target_link_libraries(octomap_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES})
+ament_target_dependencies(octomap_node rclcpp nav_msgs)
 
 # ➕ Trajectory Publisher Node (for visualizing KeyFrameTrajectory.txt)
 add_executable(trajectory_publisher_node src/trajectory_publisher_node.cpp)
