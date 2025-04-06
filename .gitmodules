@@ -23,3 +23,11 @@
 [submodule "src/octomap"]
 	path = src/octomap
 	url = https://github.com/OctoMap/octomap.git
+[submodule "src/octomap_ros"]
+	path = src/octomap_ros
+	url = https://github.com/OctoMap/octomap_ros.git
+	branch = ros2
+[submodule "src/geometry2"]
+	path = src/geometry2
+	url = https://github.com/ros2/geometry2.git
+	branch = humble

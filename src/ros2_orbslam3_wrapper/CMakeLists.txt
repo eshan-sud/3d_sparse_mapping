@@ -23,8 +23,17 @@ find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
+list(APPEND CMAKE_PREFIX_PATH "${PROJECT_SOURCE_DIR}/src/octomap_ros")
 find_package(octomap REQUIRED)
+find_package(octomap_ros REQUIRED)
+
+include_directories(
+  ${PROJECT_SOURCE_DIR}/src/octomap/include
+  ${PROJECT_SOURCE_DIR}/src/octomap_ros/include
+  ${PROJECT_SOURCE_DIR}/src/octomap_msgs/include
+)
 
 # Check ORB-SLAM3 shared library exists
 if(NOT EXISTS ${PROJECT_SOURCE_DIR}/../ORB_SLAM3/lib/libORB_SLAM3.so)
@@ -72,14 +81,14 @@ ament_target_dependencies(rviz_launcher_node rclcpp sensor_msgs std_msgs)
 
 # OctoMap Mapping Node
 add_executable(octomap_node src/octomap_node.cpp)
-target_include_directories(octomap_node PRIVATE ${OCTOMAP_INCLUDE_DIRS})
-target_link_libraries(octomap_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES})
-ament_target_dependencies(octomap_node rclcpp nav_msgs)
+target_include_directories(octomap_node PRIVATE ${OCTOMAP_ROS_INCLUDE_DIRS})
+target_link_libraries(octomap_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
+ament_target_dependencies(octomap_node rclcpp nav_msgs octomap_ros)
 
-# ➕ Trajectory Publisher Node (for visualizing KeyFrameTrajectory.txt)
-add_executable(trajectory_publisher_node src/trajectory_publisher_node.cpp)
-target_link_libraries(trajectory_publisher_node ${OpenCV_LIBS})
-ament_target_dependencies(trajectory_publisher_node rclcpp nav_msgs geometry_msgs)
+# Trajectory Publisher Node (for visualizing KeyFrameTrajectory.txt)
+#add_executable(trajectory_publisher_node src/trajectory_publisher_node.cpp)
+#target_link_libraries(trajectory_publisher_node ${OpenCV_LIBS})
+#ament_target_dependencies(trajectory_publisher_node rclcpp nav_msgs geometry_msgs)
 
 
 # Install the executables
@@ -87,7 +96,7 @@ install(TARGETS
   orbslam3_node
   camera_publisher_node
   rviz_launcher_node
-  trajectory_publisher_node
+#  trajectory_publisher_node
   octomap_node
   DESTINATION lib/${PROJECT_NAME}
 )

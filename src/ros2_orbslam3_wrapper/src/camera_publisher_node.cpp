@@ -8,14 +8,16 @@
 #include <thread>
 #include <csignal>  // For handling Ctrl+C (SIGINT)
 #include <filesystem> // C++17 required
+#include <fstream>
 
 std::atomic<bool> running(true);  // Global flag to handle shutdown properly
+
+namespace fs = std::filesystem;
 
 class CameraPublisher : public rclcpp::Node {
 public:
     CameraPublisher(const std::string& config_path) : Node("camera_publisher"), image_count_(0) {
-        // Load YAML using OpenCV
-        cv::FileStorage fs(config_path, cv::FileStorage::READ);
+        cv::FileStorage fs(config_path, cv::FileStorage::READ); // Load the YAML config file
         if (!fs.isOpened()) {
             RCLCPP_ERROR(this->get_logger(), "Failed to open YAML file: %s", config_path.c_str());
             return;
@@ -42,7 +44,19 @@ public:
             return;
         }
         std::string output_dir_ = "/home/minor-project/minor-project/Datasets/real-time"; // Set output directory
-        std::filesystem::create_directories(output_dir_);
+        std::string rgb_dir_ = output_dir_ + "/rgb";
+        std::string rgb_txt_path_ = output_dir_ + "/rgb.txt";
+        fs::create_directories(output_dir_);
+        fs::create_directories(rgb_dir_);
+
+        rgb_txt_file_.open(rgb_txt_path_, std::ios::out);
+        if (rgb_txt_file_.is_open()) {
+            rgb_txt_file_ << "# color images\n";
+            rgb_txt_file_ << "# file: 'real-time'\n";
+            rgb_txt_file_ << "# timestamp filename\n";
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Failed to create rgb.txt at %s", rgb_txt_path_.c_str());
+        }
 
         // Create publisher & timer
         publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", 10);
@@ -51,6 +65,12 @@ public:
             std::bind(&CameraPublisher::timer_callback, this));
 
         RCLCPP_INFO(this->get_logger(), "Camera node initialized successfully.");
+    }
+
+    ~CameraPublisher() {
+        if (rgb_txt_file_.is_open()) {
+            rgb_txt_file_.close();
+        }
     }
 
 private:
@@ -64,9 +84,13 @@ private:
             RCLCPP_WARN(this->get_logger(), "Captured empty frame");
             return;
         }
+        // NEWWWW
         // Convert frame to ROS 2 Image message
+        auto now = this->get_clock()->now();
+        double timestamp = now.seconds();
+
         auto msg = std::make_unique<sensor_msgs::msg::Image>();
-        msg->header.stamp = this->get_clock()->now();
+        msg->header.stamp = now;
         msg->header.frame_id = "camera_frame";
         msg->height = frame.rows;
         msg->width = frame.cols;
@@ -75,26 +99,41 @@ private:
         msg->step = frame.step;
         msg->data.assign(frame.data, frame.data + (frame.total() * frame.elemSize()));
         publisher_->publish(std::move(msg));
+
+        std::ostringstream filename_stream;
+        filename_stream << std::fixed << std::setprecision(6) << timestamp;
+        std::string filename = filename_stream.str();
+        std::string filepath = rgb_dir_ + "/" + filename + ".png";
+        cv::imwrite(filepath, frame);
+
+        if (rgb_txt_file_.is_open()) {
+            rgb_txt_file_ << filename << " rgb/" << filename << ".png\n";
+        }
+
         RCLCPP_INFO(this->get_logger(), "%d Images Published", image_count_++);
-        std::ostringstream filename;
-        filename << output_dir_ << "/frame_" << std::setw(6) << std::setfill('0') << image_count_ << ".png";
-        cv::imwrite(filename.str(), frame);
-        // Show image using OpenCV
-        cv::imshow("Camera Feed", frame);
-        cv::waitKey(1);  // Required to refresh the OpenCV window
+
+        // Cap imshow to 10 FPS
+        auto now_display = std::chrono::steady_clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now_display - last_display_time_).count();
+        if (elapsed_ms >= 1000 / display_fps_cap_) {
+            cv::imshow("Camera Feed", frame);
+            cv::waitKey(1);
+            last_display_time_ = now_display;
+        }
     }
 
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;
     rclcpp::TimerBase::SharedPtr timer_;
     cv::VideoCapture capture_;
     int image_count_;
+    int fps_, width_, height_, rgb_mode_, device_index_;
+    std::string output_dir_;
+    std::string rgb_dir_;
+    std::string rgb_txt_path_;
+    std::ofstream rgb_txt_file_;
 
-    // Declare missing parameters
-    int fps_;
-    int width_;
-    int height_;
-    int rgb_mode_;
-    int device_index_;
+    std::chrono::steady_clock::time_point last_display_time_;
+    const int display_fps_cap_ = 10; // Cap OpenCV imshow to 10 FPS
 };
 
 // Signal handler for SIGINT (Ctrl+C)
@@ -112,11 +151,8 @@ int main(int argc, char **argv) {
     }
 
     std::string config_path = argv[1];
-
     auto node = std::make_shared<CameraPublisher>(config_path);
-
-    // Handle Ctrl+C (SIGINT)
-    std::signal(SIGINT, signal_handler);
+    std::signal(SIGINT, signal_handler); // Handle Ctrl+C (SIGINT)
 
     // Use `spin_some()` to allow OpenCV to refresh, with a small sleep to reduce CPU usage
     while (rclcpp::ok() && running) {
@@ -126,8 +162,6 @@ int main(int argc, char **argv) {
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Shutting down...");
     rclcpp::shutdown();
-
-    // Explicitly release the camera
     node.reset();  // Ensure the node is destroyed before releasing OpenCV resources
     cv::destroyAllWindows();  // Close OpenCV windows
 
