@@ -1,5 +1,5 @@
 
-// Monocular ORB-SLAM3 execution node
+// RGB-D ORB-SLAM3 execution node
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -15,10 +15,14 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <thread>
+#include <string>
+#include <sstream>
+
 
 class ORBSLAM3Node : public rclcpp::Node {
 public:
-    ORBSLAM3Node() : Node("orb_slam3_node") {
+    ORBSLAM3Node() : Node("orbslam3_rgbd_node") {
 
         // Declare Parameters
         this->declare_parameter<std::string>("input_mode", "live"); // live or Pre-recorded / Dataset
@@ -29,11 +33,11 @@ public:
 
         // Get parameters
         std::string vocab_path, settings_path, input_mode, dataset_type, dataset_path;
-        this->get_parameter_or("input_mode", input_mode, std::string("live"));  // default: live
-        this->get_parameter_or("vocabulary_path", vocab_path, std::string(""));
-        this->get_parameter_or("settings_path", settings_path, std::string(""));
-        this->get_parameter_or("dataset_type", dataset_type, std::string("TUM"));  // default: TUM
-        this->get_parameter_or("dataset_path", dataset_path, std::string(""));
+        this->get_parameter("input_mode", input_mode);  // default: live
+        this->get_parameter("vocabulary_path", vocab_path);
+        this->get_parameter("settings_path", settings_path);
+        this->get_parameter("dataset_type", dataset_type);  // default: TUM
+        this->get_parameter("dataset_path", dataset_path);
 
         // Set default paths
         std::string home_dir = std::getenv("HOME") ? std::getenv("HOME") : "/home/minor-project";
@@ -43,12 +47,10 @@ public:
         if (settings_path.empty()) {
             if (input_mode == "recorded") {
                 if (dataset_type == "TUM") {
-                    settings_path = home_dir + "/ros2_test/src/ORB_SLAM3/Examples/Monocular/TUM1.yaml";
-                } else if (dataset_type == "EuRoC") {
-                    settings_path = home_dir + "/ros2_test/src/ORB_SLAM3/Examples/Monocular/EuRoC.yaml";
+                    settings_path = home_dir + "/ros2_test/src/ORB_SLAM3/Examples/RGB-D/TUM1.yaml";
                 } else {
                     RCLCPP_WARN(this->get_logger(), "Unknown dataset_type: %s. Defaulting to TUM.", dataset_type.c_str());
-                    settings_path = home_dir + "/ros2_test/src/ORB_SLAM3/Examples/Monocular/TUM1.yaml";
+                    settings_path = home_dir + "/ros2_test/src/ORB_SLAM3/Examples/RGB-D/TUM1.yaml";
                 }
             } else {
                 settings_path = home_dir + "/minor-project/camera-calibration/calibration/my_camera.yaml";
@@ -72,7 +74,7 @@ public:
         //    vocab_path, settings_path, ORB_SLAM3::System::MONOCULAR, false // Viewer is turned off
         //);
         slam_system_ = std::make_shared<ORB_SLAM3::System>(
-            vocab_path, settings_path, ORB_SLAM3::System::MONOCULAR, true
+            vocab_path, settings_path, ORB_SLAM3::System::RGBD, true
         );
 
         RCLCPP_INFO(this->get_logger(), "Vocabulary path: %s", vocab_path.c_str());
@@ -80,22 +82,20 @@ public:
         RCLCPP_INFO(this->get_logger(), "Input mode: %s", input_mode.c_str());
         RCLCPP_INFO(this->get_logger(), "Dataset type: %s", dataset_type.c_str());
         if (input_mode == "recorded" && !dataset_path.empty()) {
-            if (dataset_path.empty()) {
-                RCLCPP_WARN(this->get_logger(), "Dataset path not provided. Please specify a dataset path.");
-                return;
-            }
-            RCLCPP_INFO(this->get_logger(), "Running ORB-SLAM3 using dataset at: %s", dataset_path.c_str());
             std::thread dataset_thread([this, dataset_type, dataset_path]() {
                 this->run_dataset(dataset_type, dataset_path);
                 rclcpp::shutdown();
             });
             dataset_thread.detach();
         } else {
-            std::string topic_name = "/camera/image_raw";
-            RCLCPP_INFO(this->get_logger(), "Subscribing to topic: %s", topic_name.c_str());
             image_sub_ = image_transport::create_subscription(
-                this, topic_name,
+                this, "/camera/image_raw",
                 std::bind(&ORBSLAM3Node::image_callback, this, std::placeholders::_1),
+                "raw"
+            );
+            depth_sub_ = image_transport::create_subscription(
+                this, "/camera/image_depth",
+                std::bind(&ORBSLAM3Node::depth_callback, this, std::placeholders::_1),
                 "raw"
             );
         }
@@ -107,7 +107,7 @@ public:
             [this]() {
                 publish_trajectory();
                 publish_map_points();
-            }
+          }
         );
 
         RCLCPP_INFO(this->get_logger(), "ORB-SLAM3 Node Initialised.");
@@ -117,10 +117,13 @@ public:
 private:
     std::shared_ptr<ORB_SLAM3::System> slam_system_;
     image_transport::Subscriber image_sub_;
+    image_transport::Subscriber depth_sub_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr trajectory_pub_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr map_points_pub_;
     nav_msgs::msg::Path trajectory_;
     rclcpp::TimerBase::SharedPtr timer_;
+    cv::Mat latest_rgb_, latest_depth_;
+    rclcpp::Time last_rgb_stamp_, last_depth_stamp_;
 
     bool file_exists(const std::string& filename) {
         std::ifstream file(filename);
@@ -128,65 +131,37 @@ private:
     }
 
     void run_dataset(const std::string &dataset_type, const std::string &dataset_path) {
-        if (dataset_type == "EuRoC") {
-            // Handle EuRoC dataset (with data.csv)
-            std::string assoc_file = dataset_path + "/mav0/cam0/data.csv"; // EuRoC format
+        if (dataset_type == "TUM") {
+            std::string assoc_file = dataset_path + "/associate.txt";  // contains timestamp_rgb rgb_path timestamp_depth depth_path
             std::ifstream file(assoc_file);
             if (!file.is_open()) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to open data.csv in dataset path: %s", dataset_path.c_str());
+                RCLCPP_ERROR(this->get_logger(), "Failed to open associations.txt in dataset path: %s", dataset_path.c_str());
                 return;
             }
+
             std::string line;
             while (std::getline(file, line) && rclcpp::ok()) {
-                if (line.empty() || line[0] == '#') continue; // Skip empty or comment lines
+                if (line.empty() || line[0] == '#') continue;
 
                 std::istringstream iss(line);
-                double timestamp;
-                std::string image_filename;
-                iss >> timestamp >> image_filename;
+                double time_rgb, time_depth;
+                std::string rgb_file, depth_file;
+                iss >> time_rgb >> rgb_file >> time_depth >> depth_file;
 
-                std::string full_image_path = dataset_path + "mav0/cam0/" + image_filename;
-                std::cout << "Loading image from: " << full_image_path << std::endl;  // For debugging
-                cv::Mat image = cv::imread(full_image_path, cv::IMREAD_UNCHANGED);
-                if (image.empty()) {
-                    RCLCPP_WARN(this->get_logger(), "Failed to load image: %s", full_image_path.c_str());
+                std::string rgb_path = dataset_path + "/" + rgb_file;
+                std::string depth_path = dataset_path + "/" + depth_file;
+
+                cv::Mat rgb = cv::imread(rgb_path, cv::IMREAD_UNCHANGED);
+                cv::Mat depth = cv::imread(depth_path, cv::IMREAD_UNCHANGED);
+                if (rgb.empty() || depth.empty()) {
+                    RCLCPP_WARN(this->get_logger(), "Failed to load image pair: %s, %s", rgb_path.c_str(), depth_path.c_str());
                     continue;
                 }
-                // Process the image frame with timestamp
-                slam_system_->TrackMonocular(image, timestamp);
-                std::this_thread::sleep_for(std::chrono::milliseconds(30)); // Sleep to simulate real-time processing
-                // Publish trajectory and map points
+
+                slam_system_->TrackRGBD(rgb, depth, time_rgb);
                 publish_trajectory();
                 publish_map_points();
-            }
-            RCLCPP_INFO(this->get_logger(), "Dataset processing complete.");
-        } else if (dataset_type == "TUM") {
-            // Handle TUM dataset (with rgb.txt)
-            std::string assoc_file = dataset_path + "/rgb.txt"; // TUM format
-            std::ifstream file(assoc_file);
-            if (!file.is_open()) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to open rgb.txt in dataset path: %s", dataset_path.c_str());
-                return;
-            }
-            std::string line;
-            while (std::getline(file, line) && rclcpp::ok()) {
-                if (line.empty() || line[0] == '#') continue; // Skip empty or comment lines
-                std::istringstream iss(line);
-                double timestamp;
-                std::string image_filename;
-                iss >> timestamp >> image_filename;
-                std::string full_image_path = dataset_path + "/" + image_filename;
-                cv::Mat image = cv::imread(full_image_path, cv::IMREAD_UNCHANGED);
-                if (image.empty()) {
-                    RCLCPP_WARN(this->get_logger(), "Failed to load image: %s", full_image_path.c_str());
-                    continue;
-                }
-                // Process the image frame with timestamp
-                slam_system_->TrackMonocular(image, timestamp);
-                std::this_thread::sleep_for(std::chrono::milliseconds(30)); // Sleep to simulate real-time processing
-                // Publish trajectory and map points
-                publish_trajectory();
-                publish_map_points();
+                std::this_thread::sleep_for(std::chrono::milliseconds(30));
             }
             RCLCPP_INFO(this->get_logger(), "Dataset processing complete.");
         } else {
@@ -194,54 +169,40 @@ private:
         }
     }
 
-//    void run_dataset(const std::string &dataset_path) {
-//        std::string assoc_file = dataset_path + "/rgb.txt"; // Timestamp file for EuRoC
-//        std::ifstream file(assoc_file);
-//        if (!file.is_open()) {
-//            RCLCPP_ERROR(this->get_logger(), "Failed to open rgb.txt in dataset path: %s", dataset_path.c_str());
-//            return;
-//        }
-//        std::string line;
-//        while (std::getline(file, line) && rclcpp::ok()) {
-//            if (line.empty() || line[0] == '#') continue; // Skip empty or comment lines
-//            std::istringstream iss(line);
-//            double timestamp;
-//            std::string image_filename;
-//            iss >> timestamp >> image_filename;
-
-//            std::string full_image_path = dataset_path + "/" + image_filename;
-//            cv::Mat image = cv::imread(full_image_path, cv::IMREAD_UNCHANGED);
-//            if (image.empty()) {
-//                RCLCPP_WARN(this->get_logger(), "Failed to load image: %s", full_image_path.c_str());
-//                continue;
-//            }
-            // Process the image frame with timestamp
-//            slam_system_->TrackMonocular(image, timestamp);
-//            std::this_thread::sleep_for(std::chrono::milliseconds(30)); // Sleep to simulate real-time processing
-            // Publish trajectory and map points
-//            publish_trajectory();
-//            publish_map_points();
-//        }
-//        RCLCPP_INFO(this->get_logger(), "Dataset processing complete.");
-//    }
-
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg) {
         if (!slam_system_) return;
-
-        cv_bridge::CvImagePtr cv_ptr;
         try {
-            cv_ptr = cv_bridge::toCvCopy(msg, "bgr8");
+            auto cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+            latest_rgb_ = cv_ptr->image;
+            last_rgb_stamp_ = msg->header.stamp;
         } catch (cv_bridge::Exception &e) {
             RCLCPP_ERROR(this->get_logger(), "CV Bridge error: %s", e.what());
             return;
         }
+    }
 
-        double timestamp = rclcpp::Time(msg->header.stamp).seconds();
-        //double timestamp = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
-        slam_system_->TrackMonocular(cv_ptr->image, timestamp);
-
-        publish_trajectory();
-        publish_map_points();
+    void depth_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg) {
+        try {
+            if (msg->encoding == sensor_msgs::image_encodings::TYPE_16UC1) {
+                latest_depth_ = cv_bridge::toCvCopy(msg, msg->encoding)->image;
+            } else if (msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1) {
+                cv::Mat float_depth = cv_bridge::toCvCopy(msg, msg->encoding)->image;
+                float_depth.convertTo(latest_depth_, CV_16UC1, 1000.0);
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Unsupported depth encoding: %s", msg->encoding.c_str());
+                return;
+            }
+            last_depth_stamp_ = msg->header.stamp;
+            double stamp_diff = std::abs((last_rgb_stamp_ - last_depth_stamp_).seconds());
+            if (!latest_rgb_.empty() && stamp_diff < 0.01) {
+                double timestamp = rclcpp::Time(last_rgb_stamp_).seconds();
+                slam_system_->TrackRGBD(latest_rgb_, latest_depth_, timestamp);
+                publish_trajectory();
+                publish_map_points();
+            }
+        } catch (cv_bridge::Exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "Depth CV Bridge error: %s", e.what());
+        }
     }
 
     void publish_trajectory() {
@@ -250,7 +211,6 @@ private:
         int tracking_state = slam_system_->GetTrackingState();
         if (tracking_state == ORB_SLAM3::Tracking::LOST) {
             RCLCPP_WARN(this->get_logger(), "Tracking lost. Clearing trajectory.");
-            trajectory_.poses.clear();
             return;
         }
 
@@ -269,15 +229,20 @@ private:
         pose_msg.pose.orientation.z = q.z();
         pose_msg.pose.orientation.w = q.w();
 
-        trajectory_.header = pose_msg.header;
         trajectory_.poses.push_back(pose_msg);
+        trajectory_.header = pose_msg.header;
         trajectory_pub_->publish(trajectory_);
+
     }
 
     void publish_map_points() {
         if (!slam_system_) return;
-
         std::vector<ORB_SLAM3::MapPoint*> map_points = slam_system_->GetTrackedMapPoints();
+        std::vector<Eigen::Vector3f> valid_points;
+        for (const auto& mp : map_points) {
+            if (!mp || mp->isBad()) continue;
+            valid_points.push_back(mp->GetWorldPos());
+        }
 
         sensor_msgs::msg::PointCloud2 cloud_msg;
         cloud_msg.header.stamp = this->now();
@@ -288,23 +253,21 @@ private:
 
         sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
         modifier.setPointCloud2FieldsByString(1, "xyz");
-        modifier.resize(map_points.size());
+        modifier.resize(valid_points.size());
 
-        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg, "z");
+        auto iter_x = sensor_msgs::PointCloud2Iterator<float>(cloud_msg, "x");
+        auto iter_y = sensor_msgs::PointCloud2Iterator<float>(cloud_msg, "y");
+        auto iter_z = sensor_msgs::PointCloud2Iterator<float>(cloud_msg, "z");
 
-        for (const auto& mp : map_points) {
-            if (!mp || mp->isBad()) continue;
-            Eigen::Vector3f pos = mp->GetWorldPos();
+        for (const auto& pos : valid_points) {
             *iter_x = pos.x(); ++iter_x;
             *iter_y = pos.y(); ++iter_y;
             *iter_z = pos.z(); ++iter_z;
         }
-
         map_points_pub_->publish(cloud_msg);
     }
 };
+
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);

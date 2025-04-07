@@ -64,10 +64,16 @@ target_include_directories(ORB_SLAM3_LIB INTERFACE
     ${PROJECT_SOURCE_DIR}/../ORB_SLAM3/Thirdparty/g2o
 )
 
-# ORB-SLAM3 ROS2 Node
-add_executable(orbslam3_node src/orbslam3_node.cpp)
-target_link_libraries(orbslam3_node ORB_SLAM3_LIB ${OpenCV_LIBS} pthread)
-ament_target_dependencies(orbslam3_node rclcpp sensor_msgs std_msgs nav_msgs geometry_msgs cv_bridge image_transport OpenCV Eigen3 Pangolin)
+# ORB-SLAM3 ROS2 Nodes
+# Monocular ORB-SLAM3 Node
+add_executable(monocular_node src/orbslam_nodes/monocular_node.cpp)
+target_link_libraries(monocular_node ORB_SLAM3_LIB ${OpenCV_LIBS} pthread)
+ament_target_dependencies(monocular_node rclcpp sensor_msgs std_msgs nav_msgs geometry_msgs cv_bridge image_transport OpenCV Eigen3 Pangolin)
+
+# RGB-D ORB-SLAM3 Node
+add_executable(rgbd_node src/orbslam_nodes/rgbd_node.cpp)
+target_link_libraries(rgbd_node ORB_SLAM3_LIB ${OpenCV_LIBS} pthread)
+ament_target_dependencies(rgbd_node rclcpp sensor_msgs std_msgs nav_msgs geometry_msgs cv_bridge image_transport OpenCV Eigen3 Pangolin)
 
 # Camera Publisher Node
 add_executable(camera_publisher_node src/camera_publisher_node.cpp)
@@ -90,18 +96,16 @@ ament_target_dependencies(octomap_node rclcpp nav_msgs octomap_ros)
 #target_link_libraries(trajectory_publisher_node ${OpenCV_LIBS})
 #ament_target_dependencies(trajectory_publisher_node rclcpp nav_msgs geometry_msgs)
 
-
 # Install the executables
 install(TARGETS
-  orbslam3_node
+  monocular_node
+  rgbd_node
   camera_publisher_node
   rviz_launcher_node
 #  trajectory_publisher_node
   octomap_node
   DESTINATION lib/${PROJECT_NAME}
 )
-
-
 
 # Required for ROS2 package
 ament_package()

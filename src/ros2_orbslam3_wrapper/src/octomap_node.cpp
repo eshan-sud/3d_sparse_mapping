@@ -54,6 +54,7 @@ private:
         }
 
         std::lock_guard<std::mutex> lock(map_mutex_);
+        octree_->clear();
 
         // Process each trajectory point and update the Octree
         for (const auto& pose : msg->poses) {
