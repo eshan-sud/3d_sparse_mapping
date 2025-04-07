@@ -154,7 +154,7 @@ private:
                 }
                 // Process the image frame with timestamp
                 slam_system_->TrackMonocular(image, timestamp);
-                std::this_thread::sleep_for(std::chrono::milliseconds(30)); // Sleep to simulate real-time processing
+                std::this_thread::sleep_for(std::chrono::milliseconds(60)); // Sleep to simulate real-time processing
                 // Publish trajectory and map points
                 publish_trajectory();
                 publish_map_points();
@@ -193,36 +193,6 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Unsupported dataset type: %s", dataset_type.c_str());
         }
     }
-
-//    void run_dataset(const std::string &dataset_path) {
-//        std::string assoc_file = dataset_path + "/rgb.txt"; // Timestamp file for EuRoC
-//        std::ifstream file(assoc_file);
-//        if (!file.is_open()) {
-//            RCLCPP_ERROR(this->get_logger(), "Failed to open rgb.txt in dataset path: %s", dataset_path.c_str());
-//            return;
-//        }
-//        std::string line;
-//        while (std::getline(file, line) && rclcpp::ok()) {
-//            if (line.empty() || line[0] == '#') continue; // Skip empty or comment lines
-//            std::istringstream iss(line);
-//            double timestamp;
-//            std::string image_filename;
-//            iss >> timestamp >> image_filename;
-//            std::string full_image_path = dataset_path + "/" + image_filename;
-//            cv::Mat image = cv::imread(full_image_path, cv::IMREAD_UNCHANGED);
-//            if (image.empty()) {
-//                RCLCPP_WARN(this->get_logger(), "Failed to load image: %s", full_image_path.c_str());
-//                continue;
-//            }
-//            // Process the image frame with timestamp
-//            slam_system_->TrackMonocular(image, timestamp);
-//            std::this_thread::sleep_for(std::chrono::milliseconds(30)); // Sleep to simulate real-time processing
-//            // Publish trajectory and map points
-//            publish_trajectory();
-//            publish_map_points();
-//        }
-//        RCLCPP_INFO(this->get_logger(), "Dataset processing complete.");
-//    }
 
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg) {
         if (!slam_system_) return;

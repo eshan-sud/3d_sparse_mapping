@@ -30,6 +30,7 @@ find_package(octomap REQUIRED)
 find_package(octomap_ros REQUIRED)
 
 include_directories(
+  ${EIGEN3_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}/src/octomap/include
   ${PROJECT_SOURCE_DIR}/src/octomap_ros/include
   ${PROJECT_SOURCE_DIR}/src/octomap_msgs/include
@@ -85,16 +86,16 @@ add_executable(rviz_launcher_node src/rviz_launcher_node.cpp)
 target_link_libraries(rviz_launcher_node ${OpenCV_LIBS})
 ament_target_dependencies(rviz_launcher_node rclcpp sensor_msgs std_msgs)
 
-# OctoMap Mapping Node
-add_executable(octomap_node src/octomap_node.cpp)
-target_include_directories(octomap_node PRIVATE ${OCTOMAP_ROS_INCLUDE_DIRS})
-target_link_libraries(octomap_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
-ament_target_dependencies(octomap_node rclcpp nav_msgs octomap_ros)
+# OctoMap Mapping Nodes
+# Sparse OctoMap Node
+add_executable(sparse_mapping_node src/octomap_nodes/sparse_mapping.cpp)
+target_link_libraries(sparse_mapping_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
+ament_target_dependencies(sparse_mapping_node rclcpp nav_msgs sensor_msgs octomap_ros)
 
-# Trajectory Publisher Node (for visualizing KeyFrameTrajectory.txt)
-#add_executable(trajectory_publisher_node src/trajectory_publisher_node.cpp)
-#target_link_libraries(trajectory_publisher_node ${OpenCV_LIBS})
-#ament_target_dependencies(trajectory_publisher_node rclcpp nav_msgs geometry_msgs)
+# Dense OctoMap Node # TODO
+#add_executable(dense_mapping_node src/octomap_nodes/dense_mapping.cpp)
+#target_link_libraries(dense_mapping_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
+#ament_target_dependencies(dense_mapping_node rclcpp sensor_msgs nav_msgs geometry_msgs octomap_ros)
 
 # Install the executables
 install(TARGETS
@@ -102,8 +103,8 @@ install(TARGETS
   rgbd_node
   camera_publisher_node
   rviz_launcher_node
-#  trajectory_publisher_node
-  octomap_node
+  sparse_mapping_node
+#  dense_mapping_node # TODO
   DESTINATION lib/${PROJECT_NAME}
 )
 
