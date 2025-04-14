@@ -1,22 +1,21 @@
-
-# Script to generate the MH01.txt times file required to execute ORB-SLAM3 on EuRoC data
-
+# generate_times.py
 import os
+import sys
 
-# Path setup
-dataset_root = '/home/minor-project/ros2_test/Datasets/EuRoC/MH01/mav0'
-output_file = os.path.join(dataset_root, 'MH01.txt')
+if len(sys.argv) < 2:
+    print("Usage: python3 generate_times.py <path_to_mav0>")
+    sys.exit(1)
 
-# Full paths to image folders
+dataset_root = sys.argv[1]
+output_file = os.path.join(dataset_root, os.path.basename(os.path.dirname(dataset_root)) + ".txt")
+
 cam0_dir = os.path.join(dataset_root, 'cam0', 'data')
 cam1_dir = os.path.join(dataset_root, 'cam1', 'data')
-
-# Path to timestamps file (EuRoC format)
 csv_path = os.path.join(dataset_root, 'cam0', 'data.csv')
+
 with open(csv_path, 'r') as f:
     lines = f.readlines()
 
-# Skip header if present
 if 'timestamp' in lines[0]:
     lines = lines[1:]
 
@@ -31,4 +30,4 @@ with open(output_file, 'w') as out:
             out.write(f"{timestamp}\n")
             valid_count += 1
 
-print(f"Saved {valid_count} valid stereo timestamps to {output_file}")
+print(f"[{os.path.basename(os.path.dirname(dataset_root))}] Saved {valid_count} valid stereo timestamps to {output_file}")

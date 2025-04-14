@@ -20,6 +20,11 @@ include_directories(include)
 add_executable(depth_estimator_node src/depth_estimator_node.cpp)
 ament_target_dependencies(depth_estimator_node rclcpp sensor_msgs cv_bridge image_transport OpenCV)
 
+install(PROGRAMS
+  src/midas_depth_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(TARGETS
   depth_estimator_node
   DESTINATION lib/${PROJECT_NAME}

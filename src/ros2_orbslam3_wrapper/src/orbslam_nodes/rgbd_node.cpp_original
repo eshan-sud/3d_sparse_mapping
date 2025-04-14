@@ -18,7 +18,7 @@
 #include <thread>
 #include <string>
 #include <sstream>
-#include <filesystem>
+
 
 class ORBSLAM3Node : public rclcpp::Node {
 public:
@@ -77,12 +77,10 @@ public:
             vocab_path, settings_path, ORB_SLAM3::System::RGBD, true
         );
 
-        RCLCPP_INFO(this->get_logger(), "Initialized with:");
-        RCLCPP_INFO(this->get_logger(), " - Vocabulary path: %s", vocab_path.c_str());
-        RCLCPP_INFO(this->get_logger(), " - Settings path: %s", settings_path.c_str());
-        RCLCPP_INFO(this->get_logger(), " - Input mode: %s", input_mode.c_str());
-        RCLCPP_INFO(this->get_logger(), " - Dataset type: %s", dataset_type.c_str());
-
+        RCLCPP_INFO(this->get_logger(), "Vocabulary path: %s", vocab_path.c_str());
+        RCLCPP_INFO(this->get_logger(), "Settings path: %s", settings_path.c_str());
+        RCLCPP_INFO(this->get_logger(), "Input mode: %s", input_mode.c_str());
+        RCLCPP_INFO(this->get_logger(), "Dataset type: %s", dataset_type.c_str());
         if (input_mode == "recorded" && !dataset_path.empty()) {
             std::thread dataset_thread([this, dataset_type, dataset_path]() {
                 this->run_dataset(dataset_type, dataset_path);
@@ -101,7 +99,6 @@ public:
                 "raw"
             );
         }
-
         trajectory_pub_ = this->create_publisher<nav_msgs::msg::Path>("/orb_slam3/trajectory", 10);
         map_points_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/orb_slam3/map_points", 10);
 
@@ -113,7 +110,7 @@ public:
           }
         );
 
-        RCLCPP_INFO(this->get_logger(), "ORB-SLAM3 RGB-D Node Initialised.");
+        RCLCPP_INFO(this->get_logger(), "ORB-SLAM3 Node Initialised.");
     }
 
 
@@ -154,31 +151,16 @@ private:
                 std::string rgb_path = dataset_path + "/" + rgb_file;
                 std::string depth_path = dataset_path + "/" + depth_file;
 
-//////////////////////////////////////////////////
-                if (!std::filesystem::exists(rgb_path) || !std::filesystem::exists(depth_path)) {
-                    RCLCPP_WARN(this->get_logger(), "Missing image files: %s or %s", rgb_path.c_str(), depth_path.c_str());
-                    continue;
-                }
-//////////////////////////////////////////////////
-                RCLCPP_INFO(this->get_logger(), "Processing frame: %s", rgb_path.c_str());
                 cv::Mat rgb = cv::imread(rgb_path, cv::IMREAD_UNCHANGED);
                 cv::Mat depth = cv::imread(depth_path, cv::IMREAD_UNCHANGED);
-
                 if (rgb.empty() || depth.empty()) {
-                    RCLCPP_WARN(this->get_logger(), "Empty image: %s or %s", rgb_path.c_str(), depth_path.c_str());
+                    RCLCPP_WARN(this->get_logger(), "Failed to load image pair: %s, %s", rgb_path.c_str(), depth_path.c_str());
                     continue;
                 }
-//////////////////////////////////////////////////
-                if (cv::countNonZero(depth) < 50) {
-                    RCLCPP_WARN(this->get_logger(), "Depth too sparse in %s", depth_path.c_str());
-                    continue;
-                }
-//////////////////////////////////////////////////
+
                 slam_system_->TrackRGBD(rgb, depth, time_rgb);
-
-//                publish_trajectory();
-//                publish_map_points();
-
+                publish_trajectory();
+                publish_map_points();
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
             }
             RCLCPP_INFO(this->get_logger(), "Dataset processing complete.");
@@ -199,38 +181,29 @@ private:
         }
     }
 
-void depth_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg) {
-    try {
-        if (msg->encoding == sensor_msgs::image_encodings::TYPE_16UC1) {
-            latest_depth_ = cv_bridge::toCvCopy(msg, msg->encoding)->image;
-        } else if (msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1) {
-            cv::Mat float_depth = cv_bridge::toCvCopy(msg, msg->encoding)->image;
-            float_depth.convertTo(latest_depth_, CV_16UC1, 1000.0);
-        } else {
-            RCLCPP_WARN(this->get_logger(), "Unsupported depth encoding: %s", msg->encoding.c_str());
-            return;
-        }
-
-        last_depth_stamp_ = msg->header.stamp;
-
-        if (!latest_rgb_.empty()) {
-            // Calculate timestamp difference
+    void depth_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg) {
+        try {
+            if (msg->encoding == sensor_msgs::image_encodings::TYPE_16UC1) {
+                latest_depth_ = cv_bridge::toCvCopy(msg, msg->encoding)->image;
+            } else if (msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1) {
+                cv::Mat float_depth = cv_bridge::toCvCopy(msg, msg->encoding)->image;
+                float_depth.convertTo(latest_depth_, CV_16UC1, 1000.0);
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Unsupported depth encoding: %s", msg->encoding.c_str());
+                return;
+            }
+            last_depth_stamp_ = msg->header.stamp;
             double stamp_diff = std::abs((last_rgb_stamp_ - last_depth_stamp_).seconds());
-
-            if (stamp_diff < 0.05) { // 50ms threshold for sync
+            if (!latest_rgb_.empty() && stamp_diff < 0.01) {
                 double timestamp = rclcpp::Time(last_rgb_stamp_).seconds();
                 slam_system_->TrackRGBD(latest_rgb_, latest_depth_, timestamp);
                 publish_trajectory();
                 publish_map_points();
-            } else {
-                RCLCPP_WARN(this->get_logger(), "RGB and Depth not synchronized: diff = %.3f sec", stamp_diff);
             }
+        } catch (cv_bridge::Exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "Depth CV Bridge error: %s", e.what());
         }
-    } catch (cv_bridge::Exception &e) {
-        RCLCPP_ERROR(this->get_logger(), "Depth CV Bridge error: %s", e.what());
     }
-}
-
 
     void publish_trajectory() {
         if (!slam_system_) return;

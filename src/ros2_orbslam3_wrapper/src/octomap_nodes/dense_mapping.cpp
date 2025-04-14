@@ -2,12 +2,12 @@
 // TODO : Complete dense mapping using Octomap
 
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <octomap/octomap.h>
-#include <cv_bridge/cv_bridge.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
 #include <Eigen/Dense>
@@ -70,20 +70,15 @@ private:
             RCLCPP_WARN(this->get_logger(), "No camera pose received yet.");
             return;
         }
-        cv_bridge::CvImagePtr cv_ptr;
-        try {
-            if (msg->encoding == "16UC1") {
-                 cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_16UC1);
-//                cv_ptr = cv_bridge::toCvCopy(*msg, sensor_msgs::image_encodings::TYPE_16UC1);
-            } else if (msg->encoding == "32FC1") {
-                cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1);
-//                cv_ptr = cv_bridge::toCvCopy(*msg, sensor_msgs::image_encodings::TYPE_32FC1);
-            } else {
-                RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", msg->encoding.c_str());
-                return;
-            }
-        } catch (cv_bridge::Exception& e) {
-            RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+
+        // Convert sensor_msgs::msg::Image to cv::Mat manually
+        cv::Mat depth_image;
+        if (msg->encoding == "16UC1") {
+            depth_image = cv::Mat(msg->height, msg->width, CV_16UC1, const_cast<uint8_t*>(msg->data.data()), msg->step);
+        } else if (msg->encoding == "32FC1") {
+            depth_image = cv::Mat(msg->height, msg->width, CV_32FC1, const_cast<uint8_t*>(msg->data.data()), msg->step);
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", msg->encoding.c_str());
             return;
         }
 
@@ -112,14 +107,14 @@ private:
             pose_copy.pose.position.z
         );
 
-        for (int v = 0; v < cv_ptr->image.rows; ++v) {
-            for (int u = 0; u < cv_ptr->image.cols; ++u) {
+        for (int v = 0; v < depth_image.rows; ++v) {
+            for (int u = 0; u < depth_image.cols; ++u) {
                 float depth;
                 if (msg->encoding == "16UC1") {
-                    uint16_t d = cv_ptr->image.at<uint16_t>(v, u);
+                    uint16_t d = depth_image.at<uint16_t>(v, u);
                     depth = static_cast<float>(d) / 1000.0f; // convert mm to meters
                 } else {
-                    depth = cv_ptr->image.at<float>(v, u);
+                    depth = depth_image.at<float>(v, u);
                 }
 
                 if (std::isfinite(depth) && depth > 0.2f && depth < 5.0f) {
@@ -134,6 +129,7 @@ private:
                 }
             }
         }
+
         octree_->updateInnerOccupancy();
     }
 

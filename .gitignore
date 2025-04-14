@@ -3,3 +3,5 @@ build/*
 log/*
 install/*
 Datasets/*
+results/*
+src/monocular-depth-estimator/*

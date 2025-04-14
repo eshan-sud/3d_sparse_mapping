@@ -32,7 +32,7 @@ find_package(octomap_ros REQUIRED)
 include_directories(
   ${EIGEN3_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}/src/octomap/include
-  ${PROJECT_SOURCE_DIR}/src/octomap_ros/include
+  ${PROJECT_SOURCE_DIR}/src/octomap_ros/
   ${PROJECT_SOURCE_DIR}/src/octomap_msgs/include
 )
 
@@ -93,9 +93,9 @@ target_link_libraries(sparse_mapping_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${
 ament_target_dependencies(sparse_mapping_node rclcpp nav_msgs sensor_msgs octomap_ros)
 
 # Dense OctoMap Node # TODO
-#add_executable(dense_mapping_node src/octomap_nodes/dense_mapping.cpp)
-#target_link_libraries(dense_mapping_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
-#ament_target_dependencies(dense_mapping_node rclcpp sensor_msgs nav_msgs geometry_msgs octomap_ros)
+add_executable(dense_mapping_node src/octomap_nodes/dense_mapping.cpp)
+target_link_libraries(dense_mapping_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
+ament_target_dependencies(dense_mapping_node rclcpp sensor_msgs nav_msgs geometry_msgs octomap_ros)
 
 # Install the executables
 install(TARGETS
@@ -104,7 +104,7 @@ install(TARGETS
   camera_publisher_node
   rviz_launcher_node
   sparse_mapping_node
-#  dense_mapping_node # TODO
+  dense_mapping_node # TODO
   DESTINATION lib/${PROJECT_NAME}
 )
 
