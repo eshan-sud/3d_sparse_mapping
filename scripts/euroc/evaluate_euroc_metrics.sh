@@ -5,14 +5,16 @@ VOCAB_PATH="$HOME/ros2_test/src/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 TIMESTAMPS_DIR_BASE="$HOME/ros2_test/src/ORB_SLAM3/Examples"
 DATASET_DIR_BASE="$HOME/ros2_test/Datasets/EuRoC"
 RESULTS_DIR_BASE="$HOME/ros2_test/results/EUROC"
-#NUM_RUNS=5
-NUM_RUNS=1
+NUM_RUNS=5
 
 # Sequences to evaluate
 source "$HOME/ros2_test/scripts/common/euroc_sequences.sh"
-#sequences=("${EUROC_SEQUENCES[@]}")
-#sequences=("MH01")
-sequences=("V101")
+sequences=("${EUROC_SEQUENCES[@]}")
+
+# Modes and viewers
+modes=("Monocular" "Stereo" "Mono-Inertial" "Stereo-Inertial")
+#viewers=("with_viewer" "without_viewer")
+viwers=("without_viewer")
 
 # Mode configurations
 declare -A MODE_BINARIES=(
@@ -36,7 +38,6 @@ declare -A MODE_CONFIGS=(
   ["Stereo-Inertial"]="EuRoC.yaml"
 )
 
-# Function to run SLAM and evaluate
 run_and_evaluate() {
   local sequence=$1
   local mode=$2
@@ -62,13 +63,11 @@ run_and_evaluate() {
 
   cd "$exec_dir" || { echo "[ERROR] Failed to cd to $exec_dir"; exit 1; }
 
-  # Determine viewer argument
   local viewer_arg="true"
   if [ "$viewer_flag" == "without_viewer" ]; then
     viewer_arg="false"
   fi
 
-  # Execute SLAM
   local cmd="./$bin_name $VOCAB_PATH $exec_dir/$config_file $dataset_path $timestamp_file $viewer_arg"
   echo "[DEBUG] Executing: $cmd"
 
@@ -84,18 +83,15 @@ run_and_evaluate() {
   mv kf_true.txt "$kf_output"
   echo "[INFO] Saved kf_true.txt to $kf_output"
 
-  # Evaluate metrics
+  # Evaluation
   local GT_FILE="$dataset_path/mav0/state_groundtruth_estimate0/data.csv"
-  source "$HOME/ros2_test/scripts/evo_venv/bin/activate"
+  local METRICS_OUTPUT="$result_dir/metrics.json"
+  local METRICS_SCRIPT="$HOME/ros2_test/scripts/euroc/generate_euroc_metrics.py"
 
-  if ! command -v evo_ape &> /dev/null; then
-    echo "[ERROR] evo_ape not found!"
-    rmse="N/A"
-    mean="N/A"
-    median="N/A"
-  elif [ -f "$GT_FILE" ]; then
-    local METRICS_SCRIPT="$HOME/ros2_test/scripts/euroc/generate_euroc_metrics.py"
-    local METRICS_OUTPUT="$result_dir/metrics.json"
+  if [ -f "$GT_FILE" ]; then
+    exec_time=$(grep "ExecutionTime" "$log_output" | cut -d'=' -f2)
+    cpu_usage=$(grep "CPUUsage" "$log_output" | cut -d'=' -f2)
+    ram_usage=$(grep "MemoryKB" "$log_output" | cut -d'=' -f2)
 
     python3 "$METRICS_SCRIPT" --gt "$GT_FILE" --est "$kf_output" --out "$METRICS_OUTPUT"
 
@@ -103,42 +99,36 @@ run_and_evaluate() {
       rmse=$(jq '.rmse' "$METRICS_OUTPUT")
       mean=$(jq '.mean' "$METRICS_OUTPUT")
       median=$(jq '.median' "$METRICS_OUTPUT")
+      stddev=$(jq '.stddev' "$METRICS_OUTPUT")
+      precision=$(jq '.precision' "$METRICS_OUTPUT")
+      accuracy=$(jq '.accuracy' "$METRICS_OUTPUT")
+      r2_score=$(jq '.r2_score' "$METRICS_OUTPUT")
+      failure_rate=$(jq '.failure_rate' "$METRICS_OUTPUT")
+      avg_fps=$(jq '.avg_fps' "$METRICS_OUTPUT")
     else
       echo "[WARNING] Metrics output not found!"
-      rmse="N/A"
-      mean="N/A"
-      median="N/A"
+      rmse=mean=median=stddev=precision=accuracy=r2_score=failure_rate=avg_fps="N/A"
     fi
   fi
 
-  # Append to summary CSV
   SUMMARY_FILE="$RESULTS_DIR_BASE/euroc_final_results.csv"
   if [ ! -f "$SUMMARY_FILE" ]; then
-    echo "Sequence,Mode,Viewer,Run,RMSE,Mean,Median,Exec_Time(s),CPU_Usage(%),RAM_Usage(KB)" > "$SUMMARY_FILE"
+    echo "Sequence,Mode,Viewer,Run,RMSE,Mean,Median,StdDev,Precision,Accuracy,R2_Score,FailureRate,AvgFPS,Exec_Time(s),CPU_Usage(%),RAM_Usage(KB)" > "$SUMMARY_FILE"
   fi
 
-  exec_time=$(grep "ExecutionTime" "$log_output" | cut -d'=' -f2)
-  cpu_usage=$(grep "CPUUsage" "$log_output" | cut -d'=' -f2)
-  ram_usage=$(grep "MemoryKB" "$log_output" | cut -d'=' -f2)
-  echo "$sequence,$mode,$viewer_flag,run_$run_id,$rmse,$mean,$median,$exec_time,$cpu_usage,$ram_usage" >> "$SUMMARY_FILE"
+  echo "$sequence,$mode,$viewer_flag,run_$run_id,$rmse,$mean,$median,$stddev,$precision,$accuracy,$r2_score,$failure_rate,$avg_fps,$exec_time,$cpu_usage,$ram_usage" >> "$SUMMARY_FILE"
 }
 
-# Modes and viewer options
-#modes=("Monocular" "Stereo" "Mono-Inertial" "Stereo-Inertial")
-modes=("Stereo" "Mono-Inertial", "Stereo-Inertial")
-viewers=("with_viewer" "without_viewer")
-#viewers=("with_viewer")
-
-# Main loop
 for sequence in "${sequences[@]}"; do
   for mode in "${modes[@]}"; do
     for viewer_flag in "${viewers[@]}"; do
       for run_id in $(seq 1 $NUM_RUNS); do
         run_and_evaluate "$sequence" "$mode" "$viewer_flag" "$run_id"
-        # sleep 60 # Add delay between iterations
       done
     done
+    sleep 160  # 2 mins in between each mode of execution
   done
 done
 
 echo "All EuRoC runs completed. Results saved in $RESULTS_DIR_BASE."
+
