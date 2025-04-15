@@ -76,7 +76,7 @@ run_and_evaluate() {
 
   if [ ! -f kf_true.txt ]; then
     echo "[WARNING] ORB-SLAM3 failed. No kf_true.txt. Logging failure."
-    echo "[FAILED] $sequence | $mode | $viewer_flag | run_$run_id" >> "$HOME/ros2_test/results/euroc_failed_runs.log"
+    echo "[FAILED] $sequence | $mode | $viewer_flag | run_$run_id" >> "$HOME/ros2_test/results/EUROC/euroc_failed_runs.log"
     return
   fi
 
@@ -109,13 +109,21 @@ run_and_evaluate() {
       echo "[WARNING] Metrics output not found!"
       rmse=mean=median=stddev=precision=accuracy=r2_score=failure_rate=avg_fps="N/A"
     fi
+  else
+    echo "[WARNING] Ground truth not found at $gt_path"
+    rmse=mean=median=stddev=precision=accuracy=r2_score=failure_rate=avg_fps="N/A"
   fi
 
-  SUMMARY_FILE="$RESULTS_DIR_BASE/euroc_final_results.csv"
+  # Read time/memory/cpu from log
+  exec_time=$(grep "ExecutionTime" "$log_output" | cut -d'=' -f2)
+  cpu_usage=$(grep "CPUUsage" "$log_output" | cut -d'=' -f2)
+  ram_usage=$(grep "MemoryKB" "$log_output" | cut -d'=' -f2)
+
+  # Append to master CSV
+  SUMMARY_FILE="$RESULTS_DIR_BASE/tum_final_results.csv"
   if [ ! -f "$SUMMARY_FILE" ]; then
     echo "Sequence,Mode,Viewer,Run,RMSE,Mean,Median,StdDev,Precision,Accuracy,R2_Score,FailureRate,AvgFPS,Exec_Time(s),CPU_Usage(%),RAM_Usage(KB)" > "$SUMMARY_FILE"
   fi
-
   echo "$sequence,$mode,$viewer_flag,run_$run_id,$rmse,$mean,$median,$stddev,$precision,$accuracy,$r2_score,$failure_rate,$avg_fps,$exec_time,$cpu_usage,$ram_usage" >> "$SUMMARY_FILE"
 }
 
@@ -130,5 +138,5 @@ for sequence in "${sequences[@]}"; do
   done
 done
 
-echo "All EuRoC runs completed. Results saved in $RESULTS_DIR_BASE."
+echo "All EuRoC runs are completed. Results saved in $RESULTS_DIR_BASE."
 
