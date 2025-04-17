@@ -19,7 +19,7 @@ modes=("Monocular" "Stereo")
 #viewers=("with_viewer", "without_viewer")
 viewers=("without_viewer")
 
-run() {
+run_and_evaluate() {
   echo "[RUNNING] $sequence | $mode | $viewer_flag | run_$run_id"
 
   mkdir -p "$result_dir"
@@ -31,17 +31,20 @@ run() {
   /usr/bin/time -f "ExecutionTime=%e\nCPUUsage=%P\nMemoryKB=%M" -o "$log_output" \
     bash -c "$bin_path $VOCAB_PATH $config_path $dataset_path $viewer_arg"
 
-  if [ ! -f KeyFrameTrajectory.txt ]; then
-    echo "[FAILED] No KeyFrameTrajectory.txt produced"
+  # Determine which trajectory file is available
+  if [ -f KeyFrameTrajectory.txt ]; then
+    traj_file="KeyFrameTrajectory.txt"
+  elif [ -f CameraTrajectory.txt ]; then
+    traj_file="CameraTrajectory.txt"
+  else
+    echo "[FAILED] No trajectory file produced"
     echo "[FAILED] $sequence | $mode | $viewer_flag | run_$run_id" >> "$RESULTS_DIR_BASE/kitti_failed_runs.log"
     return
   fi
+  mv "$traj_file" "$kf_output"
+  echo "[INFO] Saved trajectory ($traj_file) to $kf_output"
+  rm -f KeyFrameTrajectory.txt kf_true.txt f_false.txt kf_false.txt f_true.txt CameraTrajectory.txt
 
-  mv KeyFrameTrajectory.txt "$kf_output"
-  echo "[INFO] Saved trajectory to $kf_output"
-}
-
-evaluate() {
   if [ -f "$gt_path" ]; then
     python3 "$METRICS_SCRIPT" --gt "$gt_path" --est "$kf_output" --out "$metrics_output"
 
@@ -73,7 +76,6 @@ evaluate() {
   fi
   echo "$sequence,$mode,$viewer_flag,run_$run_id,$rmse,$mean,$median,$stddev,$precision,$accuracy,$r2_score,$failure_rate,$avg_fps,$exec_time,$cpu_usage,$ram_usage" >> "$SUMMARY_FILE"
 }
-
 # Main loop
 for sequence in "${sequences[@]}"; do
   for mode in "${modes[@]}"; do
@@ -99,12 +101,11 @@ for sequence in "${sequences[@]}"; do
           continue
         fi
         rm -rf "$result_dir"
-        run
-        evaluate
+        run_and_evaluate
       done
     done
     sleep 160  # 2 mins in between each mode of execution
   done
 done
 
-echo "All KITTI evaluations are completed. Results are saved in $RESULTS_DIR_BASE."
+echo "All KITTI runs are completed. Results are saved in $RESULTS_DIR_BASE."

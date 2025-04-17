@@ -16,13 +16,15 @@ def load_trajectory(file, is_gt=False):
                 continue
             parts = line.strip().split(",") if is_gt else line.strip().split()
             try:
-                timestamp = float(parts[0]) / 1e9 if is_gt else float(parts[0])
-                pose = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+                timestamp = float(parts[0]) / 1e9 if is_gt else float(parts[0]) / 1e9
+                if is_gt:
+                    pose = np.array([float(parts[1]), float(parts[2]), float(parts[3])])  # x, y, z
+                else:
+                    pose = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
                 data.append((timestamp, pose))
-            except:
+            except Exception as e:
                 continue
     return data
-
 
 def compute_metrics(gt_traj, est_traj):
     gt_dict = dict(gt_traj)
@@ -33,7 +35,10 @@ def compute_metrics(gt_traj, est_traj):
     for t_est, p_est in est_traj:
         if not gt_dict:
             continue
+        threshold = 0.05  # 50ms threshold
         closest_t = min(gt_dict.keys(), key=lambda t: abs(t - t_est))
+        if abs(closest_t - t_est) > threshold:
+            continue
         p_gt = gt_dict[closest_t]
         error = np.linalg.norm(p_est - p_gt)
         errors.append(error)

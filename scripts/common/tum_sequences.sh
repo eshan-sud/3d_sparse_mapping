@@ -13,7 +13,7 @@ TUM_SEQUENCES=(
   "rgbd_dataset_freiburg2_large_with_loop"
   "rgbd_dataset_freiburg3_long_office_household"
   "rgbd_dataset_freiburg3_nostructure_notexture_far"
-  "rgbd_dataset_freiburg3_nostructure_notexture_near_withloop"
+#   "rgbd_dataset_freiburg3_nostructure_notexture_near_withloop"
   "rgbd_dataset_freiburg3_nostructure_texture_far"
   "rgbd_dataset_freiburg3_nostructure_texture_near_withloop"
   "rgbd_dataset_freiburg3_structure_notexture_far"

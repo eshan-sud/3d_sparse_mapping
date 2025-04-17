@@ -58,19 +58,20 @@ run_and_evaluate() {
   fi
 
   full_cmd="$CMD $viewer_arg"
-  # echo "[DEBUG] Executing: $full_cmd" # -- DEBUGGING --
+  echo "[DEBUG] Executing: $full_cmd" # -- DEBUGGING --
 
   # Run command with resource tracking
   /usr/bin/time -f "ExecutionTime=%e\nCPUUsage=%P\nMemoryKB=%M" -o "$log_output" \
     bash -c "$full_cmd"
 
-  if [ ! -f KeyFrameTrajectory.txt ]; then
+  if [ ! -f KeyFrameTrajectory.txt ] ; then
     echo "[WARNING] ORB-SLAM3 failed or crashed. No KeyFrameTrajectory.txt produced. Logging failure."
-    echo "[FAILED] $sequence | $mode | $viewer_flag | run_$run_id" >> "$HOME/ros2_test/results/tum_failed_runs.log"
+    echo "[FAILED] $sequence | $mode | $viewer_flag | run_$run_id" >> "$HOME/ros2_test/results/TUM/tum_failed_runs.log"
     return
   fi
   mv KeyFrameTrajectory.txt "$kf_output"
   echo "[INFO] Saved KeyFrameTrajectory.txt to $kf_output"
+#  rm -f KeyFrameTrajectory.txt kf_true.txt f_false.txt kf_false.txt f_true.txt CameraTrajectory.txt
 
   GT_FILE="$dataset_path/groundtruth.txt"
   if [ -f "$GT_FILE" ]; then
@@ -92,18 +93,21 @@ run_and_evaluate() {
       echo "[WARNING] Metrics output not found!"
       rmse=mean=median=stddev=precision=accuracy=r2_score=failure_rate=avg_fps="N/A"
     fi
-  fi
-
-  # Append to master CSV
-  SUMMARY_FILE="$RESULTS_DIR_BASE/tum_final_results.csv"
-  if [ ! -f "$SUMMARY_FILE" ]; then
-    echo "Sequence,Mode,Viewer,Run,RMSE,Mean,Median,StdDev,Precision,Accuracy,R2_Score,FailureRate,AvgFPS,Exec_Time(s),CPU_Usage(%),RAM_Usage(KB)" > "$SUMMARY_FILE"
+  else
+    echo "[WARNING] Ground truth not found at $gt_path"
+    rmse=mean=median=stddev=precision=accuracy=r2_score=failure_rate=avg_fps="N/A"
   fi
 
   # Read time/memory/cpu from log
   exec_time=$(grep "ExecutionTime" "$log_output" | cut -d'=' -f2)
   cpu_usage=$(grep "CPUUsage" "$log_output" | cut -d'=' -f2)
   ram_usage=$(grep "MemoryKB" "$log_output" | cut -d'=' -f2)
+
+  # Append to master CSV
+  SUMMARY_FILE="$RESULTS_DIR_BASE/tum_final_results.csv"
+  if [ ! -f "$SUMMARY_FILE" ]; then
+    echo "Sequence,Mode,Viewer,Run,RMSE,Mean,Median,StdDev,Precision,Accuracy,R2_Score,FailureRate,AvgFPS,Exec_Time(s),CPU_Usage(%),RAM_Usage(KB)" > "$SUMMARY_FILE"
+  fi
   echo "$sequence,$mode,$viewer_flag,run_$run_id,$rmse,$mean,$median,$stddev,$precision,$accuracy,$r2_score,$failure_rate,$avg_fps,$exec_time,$cpu_usage,$ram_usage" >> "$SUMMARY_FILE"
 }
 

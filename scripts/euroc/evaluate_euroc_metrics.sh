@@ -12,9 +12,10 @@ source "$HOME/ros2_test/scripts/common/euroc_sequences.sh"
 sequences=("${EUROC_SEQUENCES[@]}")
 
 # Modes and viewers
-modes=("Monocular" "Stereo" "Mono-Inertial" "Stereo-Inertial")
+#modes=("Monocular" "Stereo" "Mono-Inertial" "Stereo-Inertial")
+modes=("Mono-Inertial" "Stereo-Inertial")
 #viewers=("with_viewer" "without_viewer")
-viwers=("without_viewer")
+viewers=("without_viewer")
 
 # Mode configurations
 declare -A MODE_BINARIES=(
@@ -69,19 +70,29 @@ run_and_evaluate() {
   fi
 
   local cmd="./$bin_name $VOCAB_PATH $exec_dir/$config_file $dataset_path $timestamp_file $viewer_arg"
-  echo "[DEBUG] Executing: $cmd"
+  echo "[DEBUG] Executing: $cmd" # -- Debugging --
 
   /usr/bin/time -f "ExecutionTime=%e\nCPUUsage=%P\nMemoryKB=%M" -o "$log_output" \
     bash -c "$cmd"
 
-  if [ ! -f kf_true.txt ]; then
-    echo "[WARNING] ORB-SLAM3 failed. No kf_true.txt. Logging failure."
+  if [ -f KeyFrameTrajectory.txt ]; then
+    cp KeyFrameTrajectory.txt "$kf_output"
+    traj_file="$kf_output"
+    echo "[INFO] Saved KeyFrameTrajectory.txt to $kf_output"
+  elif [ -f kf_true.txt ]; then
+    cp kf_true.txt "$kf_output"
+    traj_file="$kf_output"
+    echo "[INFO] Saved kf_true.txt to $kf_output"
+  elif [ -f f_false.txt ]; then
+    cp f_false.txt "$kf_output"
+    traj_file="$kf_output"
+    echo "[INFO] Fallback: Saved f_false.txt as $kf_output"
+  else
+    echo "[WARNING] ORB-SLAM3 failed. No trajectory file found. Logging failure."
     echo "[FAILED] $sequence | $mode | $viewer_flag | run_$run_id" >> "$HOME/ros2_test/results/EUROC/euroc_failed_runs.log"
     return
   fi
-
-  mv kf_true.txt "$kf_output"
-  echo "[INFO] Saved kf_true.txt to $kf_output"
+  rm -f KeyFrameTrajectory.txt kf_true.txt f_false.txt kf_false.txt f_true.txt CameraTrajectory.txt
 
   # Evaluation
   local GT_FILE="$dataset_path/mav0/state_groundtruth_estimate0/data.csv"
@@ -93,7 +104,7 @@ run_and_evaluate() {
     cpu_usage=$(grep "CPUUsage" "$log_output" | cut -d'=' -f2)
     ram_usage=$(grep "MemoryKB" "$log_output" | cut -d'=' -f2)
 
-    python3 "$METRICS_SCRIPT" --gt "$GT_FILE" --est "$kf_output" --out "$METRICS_OUTPUT"
+    python3 "$METRICS_SCRIPT" --gt "$GT_FILE" --est "$traj_file"  --out "$METRICS_OUTPUT"
 
     if [ -f "$METRICS_OUTPUT" ]; then
       rmse=$(jq '.rmse' "$METRICS_OUTPUT")
@@ -114,13 +125,8 @@ run_and_evaluate() {
     rmse=mean=median=stddev=precision=accuracy=r2_score=failure_rate=avg_fps="N/A"
   fi
 
-  # Read time/memory/cpu from log
-  exec_time=$(grep "ExecutionTime" "$log_output" | cut -d'=' -f2)
-  cpu_usage=$(grep "CPUUsage" "$log_output" | cut -d'=' -f2)
-  ram_usage=$(grep "MemoryKB" "$log_output" | cut -d'=' -f2)
-
   # Append to master CSV
-  SUMMARY_FILE="$RESULTS_DIR_BASE/tum_final_results.csv"
+  SUMMARY_FILE="$RESULTS_DIR_BASE/euroc_final_results.csv"
   if [ ! -f "$SUMMARY_FILE" ]; then
     echo "Sequence,Mode,Viewer,Run,RMSE,Mean,Median,StdDev,Precision,Accuracy,R2_Score,FailureRate,AvgFPS,Exec_Time(s),CPU_Usage(%),RAM_Usage(KB)" > "$SUMMARY_FILE"
   fi
