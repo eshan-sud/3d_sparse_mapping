@@ -82,114 +82,122 @@ Mode : Monocular
 ### Increase swap space
 
 - Swap space is increased for max performance from the raspberry pi 5
-
-	```bash
+	```
 	sudo nano /etc/dphys-swapfile
 	```
 
 - Change swapsize to 2048
 
-	```bash
+	```
 	sudo systemctl restart dphys-swapfile
-	```
+ 	```
 
-### Execute these project's folder
+### Execute the Project's Folder
 
-	```bash
-	cd ./scripts/
-	chmod +x setup.sh
-	./setup/setup.sh
-	```
+```bash
+cd ./scripts/
+chmod +x setup.sh
+./setup/setup.sh
+```
 
-### Execution commands
+### Camera Calibration
+
+- To calibrate your camera and generate an ORB-SLAM3-compatible **.yaml** file:
+
+``` /start_camera_calibration.sh ```
+
+- Use this checkerboard for calibration: <a href="https://markhedleyjones.com/projects/calibration-checkerboard-collection">checkerboard-patterns</a>
+
+### Execution Modes
 
 - Executions will work only after successfull setup of all libraries and packages
 
-- Check all executables
-
-	```bash
-	ros2 pkg executables ros2_orbslam3_wrapper
-
-	```
-
 - Check for updates
 
-	```bash
-	sudo apt update
-	sudo apt install gnome-terminal
-	```
+	``` sudo apt update ```
 
-- TUM dataset execution (with ROS2)
+- Real-Time SLAM (Monocular)
+	``` ~/ros2_test/ ./start_realtime_slam.sh ```
 
--- Monocular mode
-	```bash
-	cd ~/ros2_test/src/ORB_SLAM3/
-	./Examples/Monocular/mono_tum \
-	 ./Vocabulary/ORBvoc.txt \
-	 ./Examples/Monocular/TUM1.yaml \
-	 ~/minor-project/Datasets/TUM/rgbd_dataset_freiburg1_desk
+- Dataset-based SLAM Modes
+	- TUM - Monocular : ``` ./start_dataset_slam.sh tum_mono ```
+	- TUM - RGB-D : ``` ./start_dataset_slam.sh tum_rgbd ```
+	- EuRoC - Monocular : ``` ./start_dataset_slam.sh euroc_mono ```
+	- Custom ROS2 Bag (RGB-D) : ``` ./start_dataset_slam.sh custom_rgbd ```
 
-	```
--- RGB-D mode
-	```bash
-	cd ~/ros2_test/src/ORB_SLAM3/
-	./Examples/RGB-D/rgbd_tum Vocabulary/ORBvoc.txt \
-	  Examples/RGB-D/TUM1.yaml \
-	  ~/ros2_test/Datasets/TUM/rgbd_dataset_freiburg1_desk \
-	  ~/ros2_test/Datasets/TUM/rgbd_dataset_freiburg1_desk/associate.txt
-	```
+### Native ORB-SLAM3 Executables (No ROS2)
 
-
-- TUM dataset execution (without ROS2) 
-
-        ```bash
-        
-        ```
-
-
-- EuRoC dataset execution
-
-
-
-
-- KITTI dataset execution
-
-
-
-- Real-time (Moncular)
-
-```bash
-cd ~/ros2_test/
-./start_real_time_slam.sh
+- TUM - Monocular
 ```
+cd ~/ros2_test/src/ORB_SLAM3/ ./Examples/Monocular/mono_tum
+ ./Vocabulary/ORBvoc.txt
+ ./Examples/Monocular/TUM1.yaml
+ ~/minor-project/datasets/TUM/rgbd_dataset_freiburg1_desk
+```
+
+- TUM - RGB-D
+```
+cd ~/ros2_test/src/ORB_SLAM3/ ./Examples/RGB-D/rgbd_tum
+ ./Vocabulary/ORBvoc.txt
+ ./Examples/RGB-D/TUM1.yaml
+ ~/ros2_test/datasets/TUM/rgbd_dataset_freiburg1_desk
+ ~/ros2_test/datasets/TUM/rgbd_dataset_freiburg1_desk/associate.txt
+```
+
+### Converting Datasets to ROS 2 Bags
+
+- Convert any TUM dataset to a ROS2 bag: **python3 convert_tum_to_ros2_bag.py <tum_sequence_folder_path> <output_folder>**
+- Example:
+```
+python3 convert_tum_to_ros2_bag.py
+/home/minor-project/ros2_test/datasets/TUM/rgbd_dataset_freiburg1_desk
+/home/minor-project/tum_ros2_bag
+```
+
+### ROS 2 Node Execution (Manual CLI)
+
+- ORB-SLAM3 Monocular Node (Live)
+```ros2 run ros2_orbslam3_wrapper monocular_node --ros-args -p input_mode:=live```
+
+- Camera Publisher with Calibration YAML
+```ros2 run ros2_orbslam3_wrapper camera_publisher_node /home/minor-project/ros2_test/scripts/common/my_camera.yaml```
+
+- RViz Launcher (from SSH, not VNC)
+- 	For some readon it RViz doesn't start on VNC connection
+```
+source ~/ros2_test/install/local_setup.bash
+export DISPLAY=0
+ros2 run ros2_orbslam3_wrapper rviz_launcher_node
+```
+
+
+
+
+
+
+
 
 
 
 ## References (Repositories being used in this project):
 
-##### 1. OpenCV4:
-        https://github.com/opencv/opencv
-
-##### 2. OpenCV4 Contrib:
-        https://github.com/opencv/opencv_contrib
-
-##### 3. ROS2 OpenCV:
-        https://github.com/ros-perception/vision_opencv
-
-##### 4. Pangolin:
-        https://github.com/stevenlovegrove/Pangolin
-
-##### 5. ORB-SLAM3:
-        https://github.com/eshan-sud/ORB_SLAM3	 			[Forked]
-
-##### 6. ORBS_SLAM3 ROS2 Wrapper:
-        https://github.com/ozandmrz/orb_slam3_ros2_mono_publisher       [Forked]
+1. OpenCV4: <a href="https://github.com/opencv/opencv">opencv</a>
+2. OpenCV dependency: <a href="https://github.com/opencv/opencv_contrib">opencv-contrib</a>
+3. ROS2-OpenCV dependency): <a href="https://github.com/ros-perception/vision_opencv">vision-opencv</a>
+4. Pangolin: <a href="https://github.com/stevenlovegrove/Pangolin">Pangolin</a>
+5. ORB-SLAM3:https://github.com/eshan-sud/ORB_SLAM3	 			[Forked]
 
 ##### 6. Installation of ROS2:
-        https://github.com/ozandmrz/ros2_raspberry_pi_5
+https://github.com/ozandmrz/ros2_raspberry_pi_5
+
+##### 7. ORBS_SLAM3 ROS2 Wrapper:
+https://github.com/ozandmrz/orb_slam3_ros2_mono_publisher       [Referenced from]
 
 
 
-## Contact the author:
 
-eshansud22_gmail.com
+
+### Contact the author
+
+[Email me](mailto:eshansud22_gmail.com)
+
