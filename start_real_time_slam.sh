@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# sudo apt install gnome-terminal
-
-# Set environment variables
-
 SETUP_FILE="/tmp/ros2_env_setup.sh"
 
 cat <<EOF > $SETUP_FILE
@@ -23,7 +19,7 @@ chmod +x $SETUP_FILE
 
 
 # Launch Camera Publisher Node
-gnome-terminal -- bash -c "source $SETUP_FILE; ros2 run ros2_orbslam3_wrapper camera_publisher_node /home/minor-project/minor-project/camera-calibration/calibration/my_camera.yaml; exec bash"
+gnome-terminal -- bash -c "source $SETUP_FILE; ros2 run ros2_orbslam3_wrapper camera_publisher_node /home/minor-project/ros2_test/scripts/common/my_camera.yaml; exec bash"
 
 # Launch ORB-SLAM3 Monocular Node
 gnome-terminal -- bash -c "source $SETUP_FILE; ros2 run ros2_orbslam3_wrapper monocular_node --ros-args -p input_mode:=live; exec bash"

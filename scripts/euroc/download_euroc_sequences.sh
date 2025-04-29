@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Base directory to save the EuRoC sequences
-BASE_DIR="${HOME}/ros2_test/Datasets/EuRoC"
+BASE_DIR="${HOME}/ros2_test/datasets/EuRoC"
 mkdir -p "$BASE_DIR"
 cd "$BASE_DIR" || exit
 

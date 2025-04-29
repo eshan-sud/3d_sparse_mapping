@@ -9,7 +9,7 @@ from geometry_msgs.msg import PoseStamped
 from builtin_interfaces.msg import Time
 from cv_bridge import CvBridge
 
-DATASET_DIR = "/home/minor-project/ros2_test/Datasets/EuRoC/MH01/mav0"
+DATASET_DIR = "/home/minor-project/ros2_test/datasets/EuRoC/MH01/mav0"
 bridge = CvBridge()
 
 def load_csv_data(file_path):

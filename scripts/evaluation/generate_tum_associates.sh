@@ -2,7 +2,7 @@
 
 # Path to your updated generate_associate.py script
 ASSOCIATE_SCRIPT=~/ros2_test/scripts/tum/generate_associate.py
-DATASET_DIR=~/ros2_test/Datasets/TUM
+DATASET_DIR=~/ros2_test/datasets/TUM
 
 sequences=(
     freiburg1_xyz

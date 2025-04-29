@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory to store KITTI dataset
-DATASET_DIR="${HOME}/ros2_test/Datasets/KITTI"
+DATASET_DIR="${HOME}/ros2_test/datasets/KITTI"
 mkdir -p "$DATASET_DIR"
 cd "$DATASET_DIR" || exit
 

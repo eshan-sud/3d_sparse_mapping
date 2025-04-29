@@ -4,7 +4,7 @@
 VOCAB_PATH="$HOME/ros2_test/src/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 KITTI_YAML_MONO="$HOME/ros2_test/src/ORB_SLAM3/Examples/Monocular/KITTI00-02.yaml"
 KITTI_YAML_STEREO="$HOME/ros2_test/src/ORB_SLAM3/Examples/Stereo/KITTI00-02.yaml"
-KITTI_DATASET_DIR="$HOME/ros2_test/Datasets/KITTI/dataset/sequences"
+KITTI_DATASET_DIR="$HOME/ros2_test/datasets/KITTI/dataset/sequences"
 KITTI_GT_DIR="$HOME/ros2_test/Datasets/KITTI/dataset/poses"
 RESULTS_DIR_BASE="$HOME/ros2_test/results/KITTI"
 METRICS_SCRIPT="$HOME/ros2_test/scripts/kitti/generate_kitti_metrics.py"

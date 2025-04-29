@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Base directory where EuRoC sequences are stored
-DATASET_DIR=~/ros2_test/Datasets/EuRoC
+DATASET_DIR=~/ros2_test/datasets/EuRoC
 SCRIPT_PATH=~/ros2_test/scripts/euroc/generate_times.py
 
 sequences=(

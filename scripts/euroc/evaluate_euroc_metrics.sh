@@ -3,7 +3,7 @@
 # Configuration
 VOCAB_PATH="$HOME/ros2_test/src/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 TIMESTAMPS_DIR_BASE="$HOME/ros2_test/src/ORB_SLAM3/Examples"
-DATASET_DIR_BASE="$HOME/ros2_test/Datasets/EuRoC"
+DATASET_DIR_BASE="$HOME/ros2_test/datasets/EuRoC"
 RESULTS_DIR_BASE="$HOME/ros2_test/results/EUROC"
 NUM_RUNS=5
 

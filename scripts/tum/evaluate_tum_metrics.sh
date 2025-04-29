@@ -3,7 +3,7 @@
 # Configuration
 VOCAB_PATH="$HOME/ros2_test/src/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CONFIG_PATH="../../Examples/Monocular/TUM1.yaml"
-DATASET_DIR_BASE="$HOME/ros2_test/Datasets/TUM"
+DATASET_DIR_BASE="$HOME/ros2_test/datasets/TUM"
 RESULTS_DIR_BASE="$HOME/ros2_test/results/TUM"
 NUM_RUNS=5
 

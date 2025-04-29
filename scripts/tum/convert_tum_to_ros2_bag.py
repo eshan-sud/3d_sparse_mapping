@@ -1,6 +1,9 @@
+# Convert a TUM RGB-D dataset sequence to a synced ROS 2 bag
+
 import os
 import cv2
 import rclpy
+import argparse
 import numpy as np
 from rclpy.serialization import serialize_message
 from rosbag2_py import SequentialWriter, StorageOptions, ConverterOptions, TopicMetadata
@@ -9,14 +12,16 @@ from sensor_msgs.msg import Image
 from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge
 
-DATASET_DIR = "/home/minor-project/ros2_test/Datasets/TUM/rgbd_dataset_freiburg1_desk"
-RGB_FILE = os.path.join(DATASET_DIR, "rgb.txt")
-DEPTH_FILE = os.path.join(DATASET_DIR, "depth.txt")
-POSE_FILE = os.path.join(DATASET_DIR, "groundtruth.txt")
-
 bridge = CvBridge()
 
-def parse_assoc(file_path):
+
+def to_ros_time(t):
+    return Time(sec=int(t), nanosec=int((t - int(t)) * 1e9))
+
+def stamp_to_ns(t):
+    return t.sec * 10**9 + t.nanosec
+
+def parse_assoc_file(file_path):
     data = []
     with open(file_path, 'r') as f:
         for line in f:
@@ -36,7 +41,6 @@ def parse_groundtruth(file_path):
             stamp = vals[0]
             pose = PoseStamped()
             pose.header.frame_id = "map"
-            pose.header.stamp = Time(sec=int(stamp), nanosec=int((stamp - int(stamp)) * 1e9))
             pose.pose.position.x = vals[1]
             pose.pose.position.y = vals[2]
             pose.pose.position.z = vals[3]
@@ -47,42 +51,81 @@ def parse_groundtruth(file_path):
             poses.append((stamp, pose))
     return poses
 
-def to_ros_time(t):
-    return Time(sec=int(t), nanosec=int((t - int(t)) * 1e9))
+def find_nearest(data, t, max_diff=0.05):
+    closest = None
+    smallest = float('inf')
+    for ts, val in data:
+        diff = abs(t - ts)
+        if diff < smallest and diff < max_diff:
+            smallest = diff
+            closest = (ts, val)
+    return closest
 
-def write_rosbag(output_path):
+def write_rosbag(dataset_dir, output_bag_path):
+    rgb_data = parse_assoc_file(os.path.join(dataset_dir, "rgb.txt"))
+    depth_data = parse_assoc_file(os.path.join(dataset_dir, "depth.txt"))
+    poses = parse_groundtruth(os.path.join(dataset_dir, "groundtruth.txt"))
+
     writer = SequentialWriter()
-    storage_options = StorageOptions(uri=output_path, storage_id='sqlite3')
+    storage_options = StorageOptions(uri=output_bag_path, storage_id='sqlite3')
     converter_options = ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr')
     writer.open(storage_options, converter_options)
 
     writer.create_topic(TopicMetadata(name="/camera/image_raw", type="sensor_msgs/msg/Image", serialization_format="cdr"))
     writer.create_topic(TopicMetadata(name="/camera/image_depth", type="sensor_msgs/msg/Image", serialization_format="cdr"))
-    writer.create_topic(TopicMetadata(name="/groundtruth", type="geometry_msgs/msg/PoseStamped", serialization_format="cdr"))
+    writer.create_topic(TopicMetadata(name="/orb_slam3/camera_pose", type="geometry_msgs/msg/PoseStamped", serialization_format="cdr"))
 
-    rgb_data = parse_assoc(RGB_FILE)
-    depth_data = parse_assoc(DEPTH_FILE)
-    poses = parse_groundtruth(POSE_FILE)
+    total_synced = 0
 
-    for timestamp, fname in rgb_data:
-        img_path = os.path.join(DATASET_DIR, fname)
-        image = cv2.imread(img_path)
-        msg = bridge.cv2_to_imgmsg(image, encoding="bgr8")
-        msg.header.stamp = to_ros_time(timestamp)
-        msg.header.frame_id = "camera_color"
-        writer.write("/camera/image_raw", serialize_message(msg), msg.header.stamp.sec * 10**9 + msg.header.stamp.nanosec)
+    for t_rgb, rgb_file in rgb_data:
+        depth_match = find_nearest(depth_data, t_rgb, max_diff=0.05)
+        pose_match = find_nearest(poses, t_rgb, max_diff=0.1)
 
-    for timestamp, fname in depth_data:
-        img_path = os.path.join(DATASET_DIR, fname)
-        image = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-        msg = bridge.cv2_to_imgmsg(image, encoding="passthrough")
-        msg.header.stamp = to_ros_time(timestamp)
-        msg.header.frame_id = "camera_depth"
-        writer.write("/camera/image_depth", serialize_message(msg), msg.header.stamp.sec * 10**9 + msg.header.stamp.nanosec)
+        if not depth_match or not pose_match:
+            continue
 
-    for stamp, pose in poses:
-        writer.write("/groundtruth", serialize_message(pose), pose.header.stamp.sec * 10**9 + pose.header.stamp.nanosec)
+        t_depth, depth_file = depth_match
+        t_pose, pose_msg = pose_match
 
-    print("Rosbag written to", output_path)
+        # Load images
+        rgb_path = os.path.join(dataset_dir, rgb_file)
+        depth_path = os.path.join(dataset_dir, depth_file)
 
-write_rosbag("/home/minor-project/ros2_test/Datasets/TUM/tum_ros2_bag")
+        rgb_img = cv2.imread(rgb_path, cv2.IMREAD_COLOR)
+        depth_img = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+
+        if rgb_img is None or depth_img is None:
+            continue
+
+        stamp = to_ros_time(t_rgb)
+
+        # RGB message
+        rgb_msg = bridge.cv2_to_imgmsg(rgb_img, encoding="bgr8")
+        rgb_msg.header.stamp = stamp
+        rgb_msg.header.frame_id = "map"
+        writer.write("/camera/image_raw", serialize_message(rgb_msg), stamp_to_ns(stamp))
+
+        # Depth message
+        depth_msg = bridge.cv2_to_imgmsg(depth_img, encoding="passthrough")
+        depth_msg.header.stamp = stamp
+        depth_msg.header.frame_id = "map"
+        writer.write("/camera/image_depth", serialize_message(depth_msg), stamp_to_ns(stamp))
+
+        # Pose message
+        pose_msg.header.stamp = stamp
+        writer.write("/orb_slam3/camera_pose", serialize_message(pose_msg), stamp_to_ns(stamp))
+
+        total_synced += 1
+
+    print(f"Wrote {total_synced} synced RGB-D-Pose messages to {output_bag_path}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Convert TUM RGB-D dataset to ROS 2 bag with synced RGB, depth, and pose")
+    parser.add_argument("dataset_dir", type=str, help="Path to TUM dataset sequence folder")
+    parser.add_argument("output_bag", type=str, help="Output bag file path")
+    args = parser.parse_args()
+
+    rclpy.init()
+    write_rosbag(args.dataset_dir, args.output_bag)
+    rclpy.shutdown()

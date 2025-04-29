@@ -25,6 +25,9 @@ find_package(Pangolin REQUIRED)
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
+find_package(yaml-cpp REQUIRED)
+find_package(visualization_msgs REQUIRED)
+
 list(APPEND CMAKE_PREFIX_PATH "${PROJECT_SOURCE_DIR}/src/octomap_ros")
 find_package(octomap REQUIRED)
 find_package(octomap_ros REQUIRED)
@@ -94,8 +97,15 @@ ament_target_dependencies(sparse_mapping_node rclcpp nav_msgs sensor_msgs octoma
 
 # Dense OctoMap Node # TODO
 add_executable(dense_mapping_node src/octomap_nodes/dense_mapping.cpp)
-target_link_libraries(dense_mapping_node ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES} ${OCTOMAP_ROS_LIBRARIES})
-ament_target_dependencies(dense_mapping_node rclcpp sensor_msgs nav_msgs geometry_msgs octomap_ros)
+target_link_libraries(dense_mapping_node
+  yaml-cpp
+  ${OpenCV_LIBS}
+  ${OCTOMAP_LIBRARIES}
+  ${OCTOMAP_ROS_LIBRARIES}
+)
+#ament_target_dependencies(dense_mapping_node rclcpp sensor_msgs nav_msgs geometry_msgs std_msgs octomap cv_bridge octomap_ros)
+ament_target_dependencies(dense_mapping_node rclcpp sensor_msgs geometry_msgs octomap cv_bridge message_filters visualization_msgs)
+
 
 # Install the executables
 install(TARGETS

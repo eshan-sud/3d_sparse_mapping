@@ -2,6 +2,8 @@
 build/*
 log/*
 install/*
-Datasets/*
+datasets/*
 results/*
 src/monocular-depth-estimator/*
+src/camera_calibration/*
+

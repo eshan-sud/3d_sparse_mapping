@@ -1,180 +1,187 @@
 
 // TODO : Complete dense mapping using Octomap
 
+// Updated Dense Mapping Node with YAML intrinsics parsing and OctoMap saving/publishing
+
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
-#include <octomap/octomap.h>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <octomap/ColorOcTree.h>
+#include <cv_bridge/cv_bridge.h>
 #include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/persistence.hpp>
+#include <octomap_msgs/msg/octomap.hpp>
+#include <octomap_msgs/conversions.h>
 #include <Eigen/Dense>
+#include <deque>
 #include <mutex>
 #include <memory>
+#include <message_filters/subscriber.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/synchronizer.h>
 
-class DenseOctoMapMappingNode : public rclcpp::Node {
+using sensor_msgs::msg::Image;
+using geometry_msgs::msg::PoseStamped;
+
+class DenseColorMappingNode : public rclcpp::Node {
 public:
-    DenseOctoMapMappingNode() : Node("dense_octomap_mapping_node") {
-        // Subscribe to depth image
-        depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/depth/image_raw", 10,
-            std::bind(&DenseOctoMapMappingNode::depth_callback, this, std::placeholders::_1)
-        );
+    DenseColorMappingNode() : Node("dense_color_mapping_node") {
+        this->declare_parameter<std::string>("settings_path", "");
 
-        // Subscribe to camera pose
-        pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/orb_slam3/camera_pose", 10,
-            std::bind(&DenseOctoMapMappingNode::pose_callback, this, std::placeholders::_1)
-        );
+        std::string settings_path;
+        this->get_parameter("settings_path", settings_path);
 
-        // OctoMap resolution: 5 cm
-        octree_ = std::make_shared<octomap::OcTree>(0.05);
+        if (!load_camera_intrinsics(settings_path)) {
+            RCLCPP_FATAL(this->get_logger(), "Failed to load camera intrinsics from YAML");
+            rclcpp::shutdown();
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Loaded intrinsics: fx=%.2f fy=%.2f cx=%.2f cy=%.2f depth_scale=%.2f", fx_, fy_, cx_, cy_, depth_scale_);
+        }
 
-        // Publisher for visualization
-        octomap_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("dense_octomap", 10);
+        using namespace message_filters;
+        rgb_sub_.subscribe(this, "/camera/image_raw");
+        depth_sub_.subscribe(this, "/camera/image_depth");
+        sync_ = std::make_shared<Synchronizer<SyncPolicy>>(SyncPolicy(10), rgb_sub_, depth_sub_);
+        sync_->registerCallback(std::bind(&DenseColorMappingNode::rgbd_callback, this, std::placeholders::_1, std::placeholders::_2));
 
-        // Timer to publish OctoMap
-        publish_timer_ = this->create_wall_timer(
+        pose_sub_ = this->create_subscription<PoseStamped>(
+            "/orb_slam3/camera_pose", 100,
+            std::bind(&DenseColorMappingNode::pose_callback, this, std::placeholders::_1));
+
+        octree_ = std::make_shared<octomap::ColorOcTree>(0.03);
+        octomap_pub_ = this->create_publisher<octomap_msgs::msg::Octomap>("/dense_octomap", 10);
+
+        timer_ = this->create_wall_timer(
             std::chrono::seconds(2),
-            std::bind(&DenseOctoMapMappingNode::publish_octomap, this)
-        );
+            std::bind(&DenseColorMappingNode::publish_octomap, this));
 
-        RCLCPP_INFO(this->get_logger(), "Dense OctoMap Mapping Node initialized.");
+        RCLCPP_INFO(this->get_logger(), "Dense Color Mapping Node initialized.");
+        startup_time_ = this->now();
     }
 
 private:
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr octomap_pub_;
-    rclcpp::TimerBase::SharedPtr publish_timer_;
+    typedef message_filters::sync_policies::ApproximateTime<Image, Image> SyncPolicy;
+    message_filters::Subscriber<Image> rgb_sub_, depth_sub_;
+    std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
 
-    std::shared_ptr<octomap::OcTree> octree_;
-    std::mutex map_mutex_;
-    std::mutex pose_mutex_;
-    geometry_msgs::msg::PoseStamped latest_pose_;
-    bool pose_received_ = false;
+    rclcpp::Subscription<PoseStamped>::SharedPtr pose_sub_;
+    rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octomap_pub_;
+    std::deque<PoseStamped::ConstSharedPtr> pose_buffer_;
+    std::mutex map_mutex_, pose_mutex_;
 
-    // Pose callback
-    void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-        std::lock_guard<std::mutex> lock(pose_mutex_);
-        latest_pose_ = *msg;
-        pose_received_ = true;
+    rclcpp::TimerBase::SharedPtr timer_;
+    std::shared_ptr<octomap::ColorOcTree> octree_;
+    rclcpp::Time startup_time_;
+
+    float fx_, fy_, cx_, cy_;
+    double depth_scale_ = 5000.0;
+
+    bool load_camera_intrinsics(const std::string &yaml_path) {
+        cv::FileStorage fs(yaml_path, cv::FileStorage::READ);
+        if (!fs.isOpened()) return false;
+        fx_ = (float)fs["Camera1.fx"];
+        fy_ = (float)fs["Camera1.fy"];
+        cx_ = (float)fs["Camera1.cx"];
+        cy_ = (float)fs["Camera1.cy"];
+        depth_scale_ = (double)fs["RGBD.DepthMapFactor"];
+        return true;
     }
 
-    // Depth callback
-    void depth_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
+    void pose_callback(const PoseStamped::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(pose_mutex_);
+        pose_buffer_.push_back(msg);
+        while (pose_buffer_.size() > 100) pose_buffer_.pop_front();
+    }
+
+    PoseStamped::ConstSharedPtr get_closest_pose(const rclcpp::Time& stamp) {
+        std::lock_guard<std::mutex> lock(pose_mutex_);
+        PoseStamped::ConstSharedPtr closest = nullptr;
+        rclcpp::Duration smallest_diff = rclcpp::Duration::from_seconds(9999.0);
+
+        for (auto& pose : pose_buffer_) {
+            rclcpp::Time pose_time(pose->header.stamp);
+            rclcpp::Duration diff = (stamp > pose_time) ? (stamp - pose_time) : (pose_time - stamp);
+            if (diff < rclcpp::Duration::from_seconds(0.1) && diff < smallest_diff) {
+                smallest_diff = diff;
+                closest = pose;
+            }
+        }
+        return closest;
+    }
+
+    void rgbd_callback(const Image::ConstSharedPtr& rgb_msg,
+                       const Image::ConstSharedPtr& depth_msg) {
+        if ((this->now() - startup_time_).seconds() < 1.0 || pose_buffer_.empty()) {
+            return;
+        }
+
+        auto pose_msg = get_closest_pose(rgb_msg->header.stamp);
+        if (!pose_msg) return;
+
+        RCLCPP_DEBUG(this->get_logger(), "Matched RGB-D frame timestamp: %.3f with pose timestamp: %.3f",
+                     rgb_msg->header.stamp.sec + rgb_msg->header.stamp.nanosec * 1e-9,
+                     pose_msg->header.stamp.sec + pose_msg->header.stamp.nanosec * 1e-9);
+
+        cv::Mat rgb_image = cv_bridge::toCvCopy(rgb_msg, "bgr8")->image;
+        cv::Mat depth_image = cv_bridge::toCvCopy(depth_msg)->image;
+
         std::lock_guard<std::mutex> lock(map_mutex_);
-        if (!pose_received_) {
-            RCLCPP_WARN(this->get_logger(), "No camera pose received yet.");
-            return;
-        }
-
-        // Convert sensor_msgs::msg::Image to cv::Mat manually
-        cv::Mat depth_image;
-        if (msg->encoding == "16UC1") {
-            depth_image = cv::Mat(msg->height, msg->width, CV_16UC1, const_cast<uint8_t*>(msg->data.data()), msg->step);
-        } else if (msg->encoding == "32FC1") {
-            depth_image = cv::Mat(msg->height, msg->width, CV_32FC1, const_cast<uint8_t*>(msg->data.data()), msg->step);
-        } else {
-            RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", msg->encoding.c_str());
-            return;
-        }
-
-        // Camera intrinsics (adjust as per your camera)
-        float fx = 525.0f;
-        float fy = 525.0f;
-        float cx = msg->width / 2.0f;
-        float cy = msg->height / 2.0f;
-
-        geometry_msgs::msg::PoseStamped pose_copy;
-        {
-            std::lock_guard<std::mutex> lock(pose_mutex_);
-            pose_copy = latest_pose_;
-        }
 
         Eigen::Quaternionf q(
-            pose_copy.pose.orientation.w,
-            pose_copy.pose.orientation.x,
-            pose_copy.pose.orientation.y,
-            pose_copy.pose.orientation.z
-        );
+            pose_msg->pose.orientation.w,
+            pose_msg->pose.orientation.x,
+            pose_msg->pose.orientation.y,
+            pose_msg->pose.orientation.z);
         Eigen::Matrix3f R = q.toRotationMatrix();
         Eigen::Vector3f t(
-            pose_copy.pose.position.x,
-            pose_copy.pose.position.y,
-            pose_copy.pose.position.z
-        );
+            pose_msg->pose.position.x,
+            pose_msg->pose.position.y,
+            pose_msg->pose.position.z);
 
         for (int v = 0; v < depth_image.rows; ++v) {
             for (int u = 0; u < depth_image.cols; ++u) {
-                float depth;
-                if (msg->encoding == "16UC1") {
-                    uint16_t d = depth_image.at<uint16_t>(v, u);
-                    depth = static_cast<float>(d) / 1000.0f; // convert mm to meters
-                } else {
+                float depth = 0.0f;
+                if (depth_image.type() == CV_16UC1) {
+                    depth = static_cast<float>(depth_image.at<uint16_t>(v, u)) / static_cast<float>(depth_scale_);
+                } else if (depth_image.type() == CV_32FC1) {
                     depth = depth_image.at<float>(v, u);
                 }
 
-                if (std::isfinite(depth) && depth > 0.2f && depth < 5.0f) {
-                    float x = (u - cx) * depth / fx;
-                    float y = (v - cy) * depth / fy;
-                    float z = depth;
+                if (!std::isfinite(depth) || depth <= 0.2f || depth >= 5.0f) continue;
 
-                    Eigen::Vector3f pt_cam(x, y, z);
-                    Eigen::Vector3f pt_world = R * pt_cam + t;
+                float x = (u - cx_) * depth / fx_;
+                float y = (v - cy_) * depth / fy_;
+                float z = depth;
 
-                    octree_->updateNode(octomap::point3d(pt_world.x(), pt_world.y(), pt_world.z()), true);
-                }
+                Eigen::Vector3f pt_cam(x, y, z);
+                Eigen::Vector3f pt_world = R * pt_cam + t;
+
+                const cv::Vec3b& color = rgb_image.at<cv::Vec3b>(v, u);
+                octree_->updateNode(octomap::point3d(pt_world.x(), pt_world.y(), pt_world.z()), true);
+                octree_->integrateNodeColor(pt_world.x(), pt_world.y(), pt_world.z(), color[2], color[1], color[0]);
             }
         }
 
         octree_->updateInnerOccupancy();
     }
 
-    // Publish the OctoMap as PointCloud2
     void publish_octomap() {
         std::lock_guard<std::mutex> lock(map_mutex_);
-
-        octomap::point3d_list occupied_points;
-        for (auto it = octree_->begin_leafs(), end = octree_->end_leafs(); it != end; ++it) {
-            if (octree_->isNodeOccupied(*it)) {
-                occupied_points.push_back(it.getCoordinate());
-            }
+        octomap_msgs::msg::Octomap msg;
+        msg.header.frame_id = "map";
+        msg.header.stamp = this->now();
+        if (octomap_msgs::fullMapToMsg(*octree_, msg)) {
+            octomap_pub_->publish(msg);
+            octree_->writeBinary("/home/minor-project/ros2_test/results/dense_map.bt");
+            RCLCPP_INFO(this->get_logger(), "Published Octomap and saved to dense_map.bt with %zu nodes", octree_->size());
         }
-
-        sensor_msgs::msg::PointCloud2 cloud_msg;
-        cloud_msg.header.stamp = this->now();
-        cloud_msg.header.frame_id = "map";
-
-        cloud_msg.height = 1;
-        cloud_msg.width = occupied_points.size();
-        cloud_msg.is_dense = false;
-        cloud_msg.is_bigendian = false;
-
-        sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
-        modifier.setPointCloud2FieldsByString(1, "xyz");
-        modifier.resize(occupied_points.size());
-
-        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_msg, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_msg, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_msg, "z");
-
-        for (const auto& pt : occupied_points) {
-            *iter_x = pt.x(); ++iter_x;
-            *iter_y = pt.y(); ++iter_y;
-            *iter_z = pt.z(); ++iter_z;
-        }
-
-        octomap_pub_->publish(cloud_msg);
-        RCLCPP_INFO(this->get_logger(), "Published dense OctoMap with %zu occupied nodes.", occupied_points.size());
     }
 };
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<DenseOctoMapMappingNode>();
+    auto node = std::make_shared<DenseColorMappingNode>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

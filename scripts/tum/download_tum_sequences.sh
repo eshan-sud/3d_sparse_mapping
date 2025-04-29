@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the dataset directory
-DATASET_DIR="${HOME}/ros2_test/Datasets/TUM"
+DATASET_DIR="${HOME}/ros2_test/datasets/TUM"
 
 # Create and enter the dataset directory
 mkdir -p $DATASET_DIR

@@ -31,3 +31,16 @@
 	path = src/geometry2
 	url = https://github.com/ros2/geometry2.git
 	branch = humble
+[submodule "src/common_interfaces"]
+	path = src/common_interfaces
+	url = https://github.com/ros2/common_interfaces.git
+	branch = humble
+[submodule "src/OpenCV/opencv"]
+	path = src/OpenCV/opencv
+	url = https://github.com/opencv/opencv.git
+[submodule "src/OpenCV/src/OpenCV/opencv_contrib"]
+	path = src/OpenCV/src/OpenCV/opencv_contrib
+	url = https://github.com/opencv/opencv_contrib.git
+[submodule "scripts/setup/src/vision_opencv"]
+	path = scripts/setup/src/vision_opencv
+	url = https://github.com/ros-perception/vision_opencv.git
