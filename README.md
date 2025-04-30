@@ -5,7 +5,7 @@ A real-time Sparse mapping SLAM implementation of ORB-SLAM3 on Raspberry Pi 5 us
 
 SLAM (Simultaneous Localisation and Mapping) enables a robot to construct a three-dimensional map of the environment while localising its own pose (position and orientation) within it. ORB-SLAM3 is a one of the most powerful SLAM implementations which have real-time, multi-map, and multi-mode support even on low-powered devices (such as the Raspberry Pi). I have implemented ORB-SLAM3 in ROS2 (Humble) on the Pi5, and built a full modular system that supports real-time monocular SLAM, RGB-D mapping, and dataset-based evaluation (TUM, EuRoC, and KITTI) with automated scripts and camera calibration tools. The system is capable of publishing 3D sparse maps, integrating with RViz2 for visualization, and supports live or recorded input via ROS 2 topics or native ORB-SLAM3 executables.
 
-This is also my minor project for my Bachelor's of Technology degree at Maniapl University Jaipur
+This is also my minor project for my Bachelor's of Technology degree at Manipal University Jaipur
 
 
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205-blue)
