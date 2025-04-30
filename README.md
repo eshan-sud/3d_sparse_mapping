@@ -1,6 +1,13 @@
 
 # 3D Sparse Mapping
 
+
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205-blue)
+![ROS2](https://img.shields.io/badge/ROS2-Humble-green)
+![SLAM](https://img.shields.io/badge/SLAM-ORB_SLAM3-blue)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.6.0-green)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
 A real-time Sparse mapping SLAM implementation of ORB-SLAM3 on Raspberry Pi 5 using ROS2 (Humble) with an external USB camera.
 
 SLAM (Simultaneous Localisation and Mapping) enables a robot to construct a three-dimensional map of the environment while localising its own pose (position and orientation) within it. ORB-SLAM3 is a one of the most powerful SLAM implementations which have real-time, multi-map, and multi-mode support even on low-powered devices (such as the Raspberry Pi). I have implemented ORB-SLAM3 in ROS2 (Humble) on the Pi5, and built a full modular system that supports real-time monocular SLAM, RGB-D mapping, and dataset-based evaluation (TUM, EuRoC, and KITTI) with automated scripts and camera calibration tools. The system is capable of publishing 3D sparse maps, integrating with RViz2 for visualization, and supports live or recorded input via ROS 2 topics or native ORB-SLAM3 executables.
@@ -8,11 +15,6 @@ SLAM (Simultaneous Localisation and Mapping) enables a robot to construct a thre
 This is also my minor project for my Bachelor's of Technology degree at Manipal University Jaipur
 
 
-![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205-blue)
-![ROS2](https://img.shields.io/badge/ROS2-Humble-green)
-![SLAM](https://img.shields.io/badge/SLAM-ORB_SLAM3-blue)
-![OpenCV](https://img.shields.io/badge/OpenCV-4.6.0-green)
-![License](https://img.shields.io/badge/license-MIT-blue)
 
 - Real-time Monocular SLAM
 
